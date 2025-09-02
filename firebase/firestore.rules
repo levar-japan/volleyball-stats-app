@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ★★★★★ ここからが新しいルール ★★★★★
+    // teamsコレクションに対するルール
+    match /teams/{teamId} {
+      // チームコードを検証するために、未認証ユーザーでも読み取り（get, list）を許可する
+      allow get, list: if true;
+
+      // ただし、チームの作成、更新、削除は認証されたユーザーのみ許可する
+      allow create, update, delete: if request.auth != null;
+    }
+
+    // teamsのサブコレクション（players, matchesなど）に対するルール
+    match /teams/{teamId}/{document=**} {
+      // チーム内の詳細なデータは、すべて認証されたユーザーのみ読み書きを許可する
+      allow read, write: if request.auth != null;
+    }
+    // ★★★★★ ここまで ★★★★★
+  }
+}

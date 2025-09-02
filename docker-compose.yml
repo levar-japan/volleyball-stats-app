@@ -1,0 +1,31 @@
+services:
+  # フロントエンドサービス
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:3000" # ローカルPCの3000番ポートをコンテナの3000番に接続
+    volumes:
+      - ./frontend:/app # ローカルのfrontendディレクトリをコンテナの/appに同期
+      - /app/node_modules # node_modulesは同期対象から除外
+    environment:
+      # ホットリロードを有効にするための設定（環境によって必要）
+      - CHOKIDAR_USEPOLLING=true
+    # firebase-emulatorが起動してからfrontendを起動する
+    depends_on:
+      - firebase-emulator
+
+  # Firebase Emulatorサービス
+  firebase-emulator:
+    build:
+      context: ./firebase
+    ports:
+      - "4000:4000" # Emulator UI
+      - "8080:8080" # Firestore Emulator
+      - "9099:9099" # Auth Emulator
+    volumes:
+      - ./firebase:/usr/src/app # ローカルのfirebaseディレクトリをコンテナに同期
+    # ★★★★★ ここから追加 ★★★★★
+    environment:
+      - GCLOUD_PROJECT=volleyball-stats-app-dev
+    # ★★★★★ ここまで追加 ★★★★★
