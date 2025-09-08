@@ -1,4 +1,5 @@
 "use client";
+
 import { useState, useEffect, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -6,10 +7,31 @@ import { useFirebase } from '@/app/FirebaseProvider';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 
 // 型定義
-interface Player { id: string; displayName: string; }
-interface Event { playerId: string; type: string; result: string; setIndex: number; } // ★★★★★ setIndexを追加 ★★★★★
-interface ActionStats { success: number; fail: number; point: number; total: number; successRate: string; }
-interface ReceptionStats { a_pass: number; b_pass: number; c_pass: number; fail: number; total: number; successRate: string; }
+interface Player {
+  id: string;
+  displayName: string;
+}
+interface Event {
+  playerId: string;
+  type: string;
+  result: string;
+  setIndex: number;
+}
+interface ActionStats {
+  success: number;
+  fail: number;
+  point: number;
+  total: number;
+  successRate: string;
+}
+interface ReceptionStats {
+  a_pass: number;
+  b_pass: number;
+  c_pass: number;
+  fail: number;
+  total: number;
+  successRate: string;
+}
 interface Stats {
   serve: ActionStats;
   spike: ActionStats;
@@ -22,18 +44,24 @@ export default function SummaryPage() {
   const { db } = useFirebase();
   const pathname = usePathname();
   const matchId = pathname.split('/')[2] || '';
+
   const [players, setPlayers] = useState<Player[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'rate' | 'count'>('rate');
-  const [totalSets, setTotalSets] = useState(0); // ★★★★★ 総セット数を管理するStateを追加 ★★★★★
-  const [selectedSet, setSelectedSet] = useState<number | 'all'>('all'); // ★★★★★ 選択中のセットを管理するStateを追加 ★★★★★
+  const [totalSets, setTotalSets] = useState(0);
+  const [selectedSet, setSelectedSet] = useState<number | 'all'>('all');
 
   useEffect(() => {
-    if (!db || !matchId) return;
+    if (!db || !matchId) {
+      setLoading(false);
+      setError("データベースまたは試合IDが無効です。");
+      return;
+    }
     const fetchData = async () => {
-      setLoading(true); setError(null);
+      setLoading(true);
+      setError(null);
       try {
         const teamsQuery = query(collection(db, 'teams'), where('code4', '==', '1234'));
         const teamSnap = await getDocs(teamsQuery);
@@ -44,7 +72,7 @@ export default function SummaryPage() {
         setPlayers(playersSnap.docs.map(d => ({ ...d.data(), id: d.id } as Player)));
 
         const setsSnap = await getDocs(collection(db, `teams/${teamId}/matches/${matchId}/sets`));
-        setTotalSets(setsSnap.size); // 総セット数をセット
+        setTotalSets(setsSnap.size);
         const allEvents: Event[] = [];
         for (const setDoc of setsSnap.docs) {
           const eventsSnap = await getDocs(collection(setDoc.ref, 'events'));
@@ -56,20 +84,31 @@ export default function SummaryPage() {
           });
         }
         setEvents(allEvents);
-      } catch (err) { setError((err as Error).message); } 
-      finally { setLoading(false); }
+      } catch (err) { 
+        setError((err as Error).message); 
+      } 
+      finally { 
+        setLoading(false); 
+      }
     };
     fetchData();
   }, [db, matchId]);
 
+  // ★★★★★ この新しいuseMemoを追加 ★★★★★
+  const participatingPlayers = useMemo(() => {
+    const participatingPlayerIds = new Set(events.map(e => e.playerId));
+    return players.filter(p => participatingPlayerIds.has(p.id));
+  }, [events, players]);
+
   const playerStats = useMemo(() => {
-    // ★★★★★ 選択されたセットでイベントをフィルタリング ★★★★★
     const filteredEvents = selectedSet === 'all'
       ? events
       : events.filter(event => event.setIndex === selectedSet);
 
     const statsByPlayer: Record<string, Stats> = {};
-    players.forEach(p => {
+
+    // ★★★★★ 集計対象をparticipatingPlayersに変更 ★★★★★
+    participatingPlayers.forEach(p => {
       statsByPlayer[p.id] = {
         serve: { success: 0, fail: 0, point: 0, total: 0, successRate: '0.0%' },
         spike: { success: 0, fail: 0, point: 0, total: 0, successRate: '0.0%' },
@@ -78,11 +117,13 @@ export default function SummaryPage() {
         dig: { success: 0, fail: 0, total: 0, successRate: '0.0%' },
       };
     });
-    
+
     filteredEvents.forEach(event => {
       if (!statsByPlayer[event.playerId]) return;
+      
       const { type, result } = event;
       const playerStat = statsByPlayer[event.playerId];
+
       if (type === 'serve' || type === 'spike' || type === 'block') {
         const stat = playerStat[type];
         stat.total++;
@@ -109,18 +150,22 @@ export default function SummaryPage() {
     Object.values(statsByPlayer).forEach(stats => {
       const serveTotal = stats.serve.total;
       if (serveTotal > 0) stats.serve.successRate = `${(((stats.serve.point - stats.serve.fail) / serveTotal) * 100).toFixed(1)}%`;
+      
       const spikeTotal = stats.spike.total;
       if (spikeTotal > 0) stats.spike.successRate = `${(((stats.spike.point - stats.spike.fail) / spikeTotal) * 100).toFixed(1)}%`;
+      
       const blockTotal = stats.block.total;
       if (blockTotal > 0) stats.block.successRate = `${((stats.block.point / blockTotal) * 100).toFixed(1)}%`;
+
       const receptionTotal = stats.reception.total;
       if (receptionTotal > 0) stats.reception.successRate = `${(((stats.reception.a_pass + stats.reception.b_pass) / receptionTotal) * 100).toFixed(1)}%`;
+      
       const digTotal = stats.dig.success + stats.dig.fail;
       if (digTotal > 0) stats.dig.successRate = `${((stats.dig.success / digTotal) * 100).toFixed(1)}%`;
     });
 
     return statsByPlayer;
-  }, [events, players, selectedSet]); // ★★★★★ selectedSetを依存配列に追加 ★★★★★
+  }, [events, participatingPlayers, selectedSet]); // ★★★★★ 依存配列を変更 ★★★★★
 
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-100"><p>集計データを読み込んでいます...</p></main>;
   if (error) return <main className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></main>;
@@ -130,12 +175,12 @@ export default function SummaryPage() {
       <div className="w-full max-w-6xl mx-auto">
         <header className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">個人成績</h1>
-          <Link href="/dashboard"><span className="text-sm text-blue-600 hover:text-blue-800">&larr; ダッシュボードに戻る</span></Link>
+          <Link href="/dashboard">
+            <span className="text-sm text-blue-600 hover:text-blue-800">&larr; ダッシュボードに戻る</span>
+          </Link>
         </header>
         <div className="bg-white p-6 rounded-lg shadow-md">
-          {/* ★★★★★ UIの変更箇所 ★★★★★ */}
           <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
-            {/* セット選択タブ */}
             <div className="flex-grow">
               <div className="border-b border-gray-200">
                 <nav className="-mb-px flex space-x-6 overflow-x-auto">
@@ -150,18 +195,21 @@ export default function SummaryPage() {
                 </nav>
               </div>
             </div>
-            {/* 表示モード切り替え */}
             <div className="inline-flex rounded-md shadow-sm">
-              <button onClick={() => setViewMode('rate')} className={`px-4 py-2 text-sm font-medium rounded-l-lg border ${viewMode === 'rate' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+              <button
+                onClick={() => setViewMode('rate')}
+                className={`px-4 py-2 text-sm font-medium rounded-l-lg border ${viewMode === 'rate' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+              >
                 率で表示
               </button>
-              <button onClick={() => setViewMode('count')} className={`px-4 py-2 text-sm font-medium rounded-r-lg border ${viewMode === 'count' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+              <button
+                onClick={() => setViewMode('count')}
+                className={`px-4 py-2 text-sm font-medium rounded-r-lg border ${viewMode === 'count' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+              >
                 数で表示
               </button>
             </div>
           </div>
-          {/* ★★★★★ ここまで ★★★★★ */}
-
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -186,7 +234,8 @@ export default function SummaryPage() {
                 )}
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {players.map(player => {
+                {/* ★★★★★ 表示対象をparticipatingPlayersに変更 ★★★★★ */}
+                {participatingPlayers.map(player => {
                   const stats = playerStats[player.id];
                   if (!stats) return null;
                   return (
