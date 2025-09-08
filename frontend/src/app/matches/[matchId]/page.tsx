@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useFirebase } from '@/app/FirebaseProvider';
 import { doc, getDoc, collection, getDocs, query, where, writeBatch, serverTimestamp, Timestamp, runTransaction, onSnapshot, updateDoc, orderBy, deleteDoc } from 'firebase/firestore';
 
-// (型定義は変更なし)
+// 型定義
 interface Match { id: string; opponent: string; matchDate: Timestamp; status: string; }
 interface Player { id:string; displayName: string; }
 interface RosterMember { playerId: string; position: string; }
@@ -29,6 +29,7 @@ export default function MatchPage() {
   const [activeSet, setActiveSet] = useState<SetData | null>(null);
   const [selectedPlayerForEvent, setSelectedPlayerForEvent] = useState<(Player & { position: string }) | null>(null);
   const [isSelectingForNextSet, setIsSelectingForNextSet] = useState(false);
+  const [editingSet, setEditingSet] = useState<SetData | null>(null);
 
   useEffect(() => {
     if (!db || !matchId) return;
@@ -66,13 +67,13 @@ export default function MatchPage() {
   }, [teamId, db, matchId]);
 
   useEffect(() => {
-    if (isSelectingForNextSet) {
+    if (isSelectingForNextSet || editingSet) {
       setActiveSet(null);
       return;
     }
     const currentActiveSet = sets.find(s => s.status === 'ongoing') || null;
     setActiveSet(currentActiveSet);
-  }, [sets, isSelectingForNextSet]);
+  }, [sets, isSelectingForNextSet, editingSet]);
 
   useEffect(() => {
     if (!activeSet || !teamId) { setEvents([]); return; }
@@ -97,7 +98,7 @@ export default function MatchPage() {
   const handleReopenSet = async (setId: string) => { if (!teamId || !matchId) return; if (activeSet) { alert("進行中のセットがあります。まずそのセットを終了してください。"); return; } if (!window.confirm("この終了したセットの記録を再開しますか？")) return; try { const batch = writeBatch(db); const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${setId}`); batch.update(setRef, { status: 'ongoing' }); const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`); batch.update(matchRef, { status: 'ongoing' }); await batch.commit(); } catch (err) { console.error(err); } };
   const handleEditSetRoster = (set: SetData) => { setEditingSet(set); const rosterMap = new Map<string, string>(); set.roster.forEach(member => rosterMap.set(member.playerId, member.position)); setSelectedRoster(rosterMap); setSelectedLiberos(new Set(set.liberos)); };
   const handleUpdateSetRoster = async () => { if (!editingSet || !teamId) return; try { const rosterData = Array.from(selectedRoster.entries()).map(([playerId, position]) => ({ playerId, position })); const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${editingSet.id}`); await updateDoc(setRef, { roster: rosterData, liberos: Array.from(selectedLiberos), updatedAt: serverTimestamp(), }); setEditingSet(null); } catch (err) { console.error(err); } };
-  
+
   if (loading || !match) return (<main className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合情報を読み込んでいます...</p></main>);
   if (error) return (<main className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></main>);
 
@@ -128,14 +129,22 @@ export default function MatchPage() {
     if (isMatchFinished) {
       return (
         <div className="bg-white p-8 rounded-b-lg shadow-md text-center">
-          <h2 className="text-3xl font-bold mb-4 text-gray-800">試合終了</h2><p className="text-xl text-gray-800">{ownSetsWon} - {opponentSetsWon}</p><p className="text-2xl font-bold mt-2 text-blue-600">{ownSetsWon > opponentSetsWon ? "勝利！" : "敗北"}</p>
+          <h2 className="text-3xl font-bold mb-4 text-gray-800">試合終了</h2>
+          <p className="text-xl text-gray-800">{ownSetsWon} - {opponentSetsWon}</p>
+          <p className="text-2xl font-bold mt-2 text-blue-600">{ownSetsWon > opponentSetsWon ? "勝利！" : "敗北"}</p>
           <div className="mt-8">
             <h4 className="text-lg font-semibold mb-2 text-gray-800">終了したセットの編集</h4>
-            <ul className="space-y-2">{sets.map(set => (<li key={set.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md"><span className="text-gray-800 font-medium">第{set.index}セット ({set.score.own} - {set.score.opponent})</span><div className="flex gap-2"><button onClick={() => handleEditSetRoster(set)} className="px-3 py-1 bg-gray-500 text-white text-xs font-semibold rounded-md hover:bg-gray-600">選手</button><button onClick={() => handleReopenSet(set.id)} className="px-3 py-1 bg-green-500 text-white text-xs font-semibold rounded-md hover:bg-green-600">記録</button></div></li>))}</ul>
+            <ul className="space-y-2">{sets.map(set => (
+              <li key={set.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md">
+                <span className="text-gray-800 font-medium">第{set.index}セット ({set.score.own} - {set.score.opponent})</span>
+                <div className="flex gap-2"><button onClick={() => handleEditSetRoster(set)} className="px-3 py-1 bg-gray-500 text-white text-xs font-semibold rounded-md hover:bg-gray-600">選手</button><button onClick={() => handleReopenSet(set.id)} className="px-3 py-1 bg-green-500 text-white text-xs font-semibold rounded-md hover:bg-green-600">記録</button></div>
+              </li>
+            ))}</ul>
           </div>
         </div>
       );
     }
+    
     if (activeSet) {
       return (
         <div className="bg-white rounded-b-lg shadow-md">
