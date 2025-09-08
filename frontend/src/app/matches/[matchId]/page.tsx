@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useFirebase } from '@/app/FirebaseProvider';
 import { doc, getDoc, collection, getDocs, query, where, writeBatch, serverTimestamp, Timestamp, runTransaction, onSnapshot, updateDoc, orderBy, deleteDoc } from 'firebase/firestore';
 
-// 型定義
 interface Match { id: string; opponent: string; matchDate: Timestamp; status: string; }
 interface Player { id:string; displayName: string; }
 interface RosterMember { playerId: string; position: string; }
@@ -84,203 +83,17 @@ export default function MatchPage() {
     return () => unsubscribe();
   }, [activeSet, teamId, db, matchId]);
 
-  const handleRosterChange = (playerId: string, position: string) => {
-    setSelectedRoster(prev => {
-      const newRoster = new Map(prev);
-      if (position) {
-        newRoster.set(playerId, position);
-      } else {
-        newRoster.delete(playerId);
-      }
-      return newRoster;
-    });
-  };
-
-  const handleLiberoSelect = (playerId: string) => {
-    setSelectedLiberos(prev => {
-      const s = new Set(prev);
-      if (s.has(playerId)) {
-        s.delete(playerId);
-      } else if (s.size < 2) {
-        s.add(playerId);
-      }
-      return s;
-    });
-  };
-
-  const handleStartSet = async () => {
-    if (selectedRoster.size === 0) {
-      alert("出場選手を1人以上選択してください。");
-      return;
-    }
-    if (!teamId || !matchId) {
-      return;
-    }
-    try {
-      const batch = writeBatch(db);
-      const newSetRef = doc(collection(db, `teams/${teamId}/matches/${matchId}/sets`));
-      const rosterData = Array.from(selectedRoster.entries()).map(([playerId, position]) => ({ playerId, position }));
-      batch.set(newSetRef, {
-        index: sets.length + 1,
-        status: 'ongoing',
-        roster: rosterData,
-        liberos: Array.from(selectedLiberos),
-        score: { own: 0, opponent: 0 },
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`);
-      batch.update(matchRef, { status: 'ongoing', updatedAt: serverTimestamp() });
-      await batch.commit();
-      setIsSelectingForNextSet(false);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleSelectPlayerForEvent = (rosterMember: RosterMember) => {
-    const player = players.find(p => p.id === rosterMember.playerId);
-    if (player) {
-      setSelectedPlayerForEvent({ ...player, position: rosterMember.position });
-    }
-  };
-
-  const checkSetFinished = (own: number, opp: number, isFinal: boolean) => {
-    const pts = isFinal ? 15 : 25;
-    if (own >= pts && own >= opp + 2) return 'own_won';
-    if (opp >= pts && opp >= own + 2) return 'opponent_won';
-    return null;
-  };
-
-  const handleRecordEvent = async (type: string, result: string, playerId: string | null = selectedPlayerForEvent?.id || null) => {
-    if (!teamId || !matchId || !activeSet) return;
-    try {
-      await runTransaction(db, async (t) => {
-        const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${activeSet.id}`);
-        const setDoc = await t.get(setRef);
-        if (!setDoc.exists()) throw "Set does not exist!";
-        const d = setDoc.data();
-        let own = d.score.own;
-        let opp = d.score.opponent;
-        if (result === 'point' || type === 'opponent_error') {
-          own++;
-        } else if (result === 'fail' || type === 'own_error') {
-          opp++;
-        }
-        t.set(doc(collection(setRef, 'events')), {
-          setIndex: activeSet.index,
-          playerId,
-          type,
-          result,
-          at: serverTimestamp(),
-        });
-        const isFinal = activeSet.index >= 4;
-        const setResult = checkSetFinished(own, opp, isFinal);
-        const newStatus = setResult ? 'finished' : 'ongoing';
-        t.update(setRef, {
-          score: { own, opponent: opp },
-          status: newStatus,
-          updatedAt: serverTimestamp(),
-        });
-      });
-      const setsQuery = query(collection(db, `teams/${teamId}/matches/${matchId}/sets`));
-      const setsSnap = await getDocs(setsQuery);
-      let ownWon = 0;
-      let oppWon = 0;
-      setsSnap.forEach(d => {
-        const data = d.data();
-        if (data.status === 'finished') {
-          if (data.score.own > data.score.opponent) ownWon++;
-          else oppWon++;
-        }
-      });
-      if (ownWon >= 3 || oppWon >= 3) {
-        await updateDoc(doc(db, `teams/${teamId}/matches/${matchId}`), { status: 'finished' });
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSelectedPlayerForEvent(null);
-    }
-  };
-
-  const handleEndSetManually = async () => {
-    if (!activeSet || !teamId) return;
-    if (!window.confirm(`第${activeSet.index}セットを終了しますか？`)) return;
-    try {
-      await updateDoc(doc(db, `teams/${teamId}/matches/${matchId}/sets/${activeSet.id}`), {
-        status: 'finished',
-        updatedAt: serverTimestamp(),
-      });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleGoToNextSet = () => {
-    setIsSelectingForNextSet(true);
-    setSelectedRoster(new Map());
-    setSelectedLiberos(new Set());
-  };
-
-  const handleFinishMatchManually = async () => {
-    if (!teamId || !matchId) return;
-    if (!window.confirm("この試合を終了しますか？")) return;
-    try {
-      const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`);
-      await updateDoc(matchRef, {
-        status: 'finished',
-        updatedAt: serverTimestamp(),
-      });
-      router.push('/dashboard');
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleUndoEvent = async () => {
-    if (events.length === 0 || !teamId || !activeSet) return;
-    if (!window.confirm("直前の記録を取り消しますか？")) return;
-    const lastEvent = events[0];
-    try {
-      await runTransaction(db, async (t) => {
-        const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${activeSet.id}`);
-        const setDoc = await t.get(setRef);
-        if (!setDoc.exists()) throw "Set does not exist!";
-        t.delete(doc(setRef, `events/${lastEvent.id}`));
-        const score = setDoc.data().score;
-        let own = score.own;
-        let opp = score.opponent;
-        if (lastEvent.result === 'point' || lastEvent.type === 'opponent_error') own--;
-        else if (lastEvent.result === 'fail' || lastEvent.type === 'own_error') opp--;
-        t.update(setRef, {
-          score: { own, opponent: opp },
-          updatedAt: serverTimestamp(),
-        });
-      });
-    } catch (err) {
-      console.error("Undo transaction failed: ", err);
-    }
-  };
-
-  const handleReopenSet = async (setId: string) => {
-    if (!teamId || !matchId) return;
-    if (activeSet) {
-      alert("進行中のセットがあります。まずそのセットを終了してください。");
-      return;
-    }
-    if (!window.confirm("この終了したセットの記録を再開しますか？")) return;
-    try {
-      const batch = writeBatch(db);
-      const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${setId}`);
-      batch.update(setRef, { status: 'ongoing' });
-      const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`);
-      batch.update(matchRef, { status: 'ongoing' });
-      await batch.commit();
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  const handleRosterChange = (playerId: string, position: string) => { setSelectedRoster(prev => { const newRoster = new Map(prev); if (position) { newRoster.set(playerId, position); } else { newRoster.delete(playerId); } return newRoster; }); };
+  const handleLiberoSelect = (playerId: string) => { setSelectedLiberos(prev => { const s = new Set(prev); if (s.has(playerId)) { s.delete(playerId); } else if (s.size < 2) { s.add(playerId); } return s; }); };
+  const handleStartSet = async () => { if (selectedRoster.size === 0) { alert("出場選手を1人以上選択してください。"); return; } if (!teamId || !matchId) { return; } try { const batch = writeBatch(db); const newSetRef = doc(collection(db, `teams/${teamId}/matches/${matchId}/sets`)); const rosterData = Array.from(selectedRoster.entries()).map(([playerId, position]) => ({ playerId, position })); batch.set(newSetRef, { index: sets.length + 1, status: 'ongoing', roster: rosterData, liberos: Array.from(selectedLiberos), score: { own: 0, opponent: 0 }, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }); const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`); batch.update(matchRef, { status: 'ongoing', updatedAt: serverTimestamp() }); await batch.commit(); setIsSelectingForNextSet(false); } catch (e) { console.error(e); } };
+  const handleSelectPlayerForEvent = (rosterMember: RosterMember) => { const player = players.find(p => p.id === rosterMember.playerId); if (player) { setSelectedPlayerForEvent({ ...player, position: rosterMember.position }); } };
+  const checkSetFinished = (own: number, opp: number, isFinal: boolean) => { const pts = isFinal ? 15 : 25; if (own >= pts && own >= opp + 2) return 'own_won'; if (opp >= pts && opp >= own + 2) return 'opponent_won'; return null; };
+  const handleRecordEvent = async (type: string, result: string, playerId: string | null = selectedPlayerForEvent?.id || null) => { if (!teamId || !matchId || !activeSet) return; try { await runTransaction(db, async (t) => { const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${activeSet.id}`); const setDoc = await t.get(setRef); if (!setDoc.exists()) throw "Set does not exist!"; const d = setDoc.data(); let own = d.score.own; let opp = d.score.opponent; if (result === 'point' || type === 'opponent_error') { own++; } else if (result === 'fail' || type === 'own_error') { opp++; } t.set(doc(collection(setRef, 'events')), { setIndex: activeSet.index, playerId, type, result, at: serverTimestamp() }); const isFinal = activeSet.index >= 4; const setResult = checkSetFinished(own, opp, isFinal); const newStatus = setResult ? 'finished' : 'ongoing'; t.update(setRef, { score: { own, opponent: opp }, status: newStatus, updatedAt: serverTimestamp() }); }); const setsQuery = query(collection(db, `teams/${teamId}/matches/${matchId}/sets`)); const setsSnap = await getDocs(setsQuery); let ownWon = 0, oppWon = 0; setsSnap.forEach(d => { const data = d.data(); if (data.status === 'finished') { if (data.score.own > data.score.opponent) ownWon++; else oppWon++; } }); if (ownWon >= 3 || oppWon >= 3) { await updateDoc(doc(db, `teams/${teamId}/matches/${matchId}`), { status: 'finished' }); } } catch (e) { console.error(e); } finally { setSelectedPlayerForEvent(null); } };
+  const handleEndSetManually = async () => { if (!activeSet || !teamId) return; if (!window.confirm(`第${activeSet.index}セットを終了しますか？`)) return; try { await updateDoc(doc(db, `teams/${teamId}/matches/${matchId}/sets/${activeSet.id}`), { status: 'finished', updatedAt: serverTimestamp() }); } catch (e) { console.error(e); } };
+  const handleGoToNextSet = () => { setIsSelectingForNextSet(true); setSelectedRoster(new Map()); setSelectedLiberos(new Set()); };
+  const handleFinishMatchManually = async () => { if (!teamId || !matchId) return; if (!window.confirm("この試合を終了しますか？")) return; try { const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`); await updateDoc(matchRef, { status: 'finished', updatedAt: serverTimestamp() }); router.push('/dashboard'); } catch (err) { console.error(err); } };
+  const handleUndoEvent = async () => { if (events.length === 0 || !teamId || !activeSet) return; if (!window.confirm("直前の記録を取り消しますか？")) return; const lastEvent = events[0]; try { await runTransaction(db, async (t) => { const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${activeSet.id}`); const setDoc = await t.get(setRef); if (!setDoc.exists()) throw "Set does not exist!"; t.delete(doc(setRef, `events/${lastEvent.id}`)); const score = setDoc.data().score; let own = score.own; let opp = score.opponent; if (lastEvent.result === 'point' || lastEvent.type === 'opponent_error') own--; else if (lastEvent.result === 'fail' || lastEvent.type === 'own_error') opp--; t.update(setRef, { score: { own, opponent: opp }, updatedAt: serverTimestamp() }); }); } catch (err) { console.error("Undo transaction failed: ", err); } };
+  const handleReopenSet = async (setId: string) => { if (!teamId || !matchId) return; if (activeSet) { alert("進行中のセットがあります。まずそのセットを終了してください。"); return; } if (!window.confirm("この終了したセットの記録を再開しますか？")) return; try { const batch = writeBatch(db); const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${setId}`); batch.update(setRef, { status: 'ongoing' }); const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`); batch.update(matchRef, { status: 'ongoing' }); await batch.commit(); } catch (err) { console.error(err); } };
 
   if (loading || !match) return (<main className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合情報を読み込んでいます...</p></main>);
   if (error) return (<main className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></main>);
@@ -321,17 +134,15 @@ export default function MatchPage() {
           <p className="text-2xl font-bold mt-2 text-blue-600">{ownSetsWon > opponentSetsWon ? "勝利！" : "敗北"}</p>
           <div className="mt-8">
             <h4 className="text-lg font-semibold mb-2 text-gray-800">終了したセットの編集</h4>
-            <ul className="space-y-2">
-              {sets.map(set => (
-                <li key={set.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md">
-                  <span className="text-gray-800 font-medium">第{set.index}セット</span>
-                  <span className={`font-bold px-3 py-1 rounded-full text-sm ${set.score.own > set.score.opponent ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {set.score.own} - {set.score.opponent}
-                  </span>
-                  <button onClick={() => handleReopenSet(set.id)} className="px-3 py-1 bg-blue-500 text-white text-sm font-semibold rounded-md hover:bg-blue-600">編集</button>
-                </li>
-              ))}
-            </ul>
+            <ul className="space-y-2">{sets.map(set => (
+              <li key={set.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md">
+                <span className="text-gray-800 font-medium">第{set.index}セット</span>
+                <span className={`font-bold px-3 py-1 rounded-full text-sm ${set.score.own > set.score.opponent ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                  {set.score.own} - {set.score.opponent}
+                </span>
+                <button onClick={() => handleReopenSet(set.id)} className="px-3 py-1 bg-blue-500 text-white text-sm font-semibold rounded-md hover:bg-blue-600">編集</button>
+              </li>
+            ))}</ul>
           </div>
         </div>
       );
@@ -372,7 +183,7 @@ export default function MatchPage() {
               </div>
             ) : (
               <div className="flex overflow-x-auto gap-3 pb-3">
-                {activeSet.roster.map(member => { const p = players.find(p => p.id === member.playerId); if (!p) return null; return (<div key={member.playerId} onClick={() => handleSelectPlayerForEvent(member)} className={`flex-shrink-0 w-24 h-24 p-2 rounded-lg text-center flex flex-col justify-center cursor-pointer transition-colors ${member.position === 'L' ? 'bg-orange-100 hover:bg-orange-200' : 'bg-gray-200 hover:bg-gray-300'}`}><p className="font-bold text-gray-900">{p.displayName}</p><p className="text-sm text-gray-700">{p.position}</p></div>); })}
+                {activeSet.roster.map(member => { const p = players.find(p => p.id === member.playerId); if (!p) return null; return (<div key={member.playerId} onClick={() => handleSelectPlayerForEvent(member)} className={`flex-shrink-0 w-24 h-24 p-2 rounded-lg text-center flex flex-col justify-center cursor-pointer transition-colors ${member.position === 'L' ? 'bg-orange-100 hover:bg-orange-200' : 'bg-gray-200 hover:bg-gray-300'}`}><p className="font-bold text-gray-900">{p.displayName}</p><p className="text-sm text-gray-700">{member.position}</p></div>); })}
               </div>
             )}
           </div>
