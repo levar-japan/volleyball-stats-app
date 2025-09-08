@@ -110,7 +110,7 @@ export default function MatchPage() {
     const targetSet = isEditing ? editingSet : null;
     return (
       <div className="bg-white p-6 rounded-b-lg shadow-md">
-        <h2 className="text-xl font-semibold mb-1 text-gray-800">{isEditing ? `第${targetSet?.index}セットの選手を編集` : `第${sets.length + 1}セットを開始`}</h2>
+        <h2 className="text-xl font-semibold mb-1 text-gray-800">{isEditing ? `第${targetSet?.index}セットの選手を編集` : `${sets.length > 0 ? `第${sets.length + 1}セット` : '最初のセット'}を開始`}</h2>
         <p className="text-sm text-gray-700 mb-4">出場する選手と、そのポジションを選択してください。</p>
         <div className="space-y-4">
           {players.map(p => (
@@ -125,7 +125,10 @@ export default function MatchPage() {
         </div>
         <div className="mt-6 text-center">
           {isEditing ? (
-            <div className="flex justify-center gap-4"><button onClick={() => setEditingSet(null)} className="px-4 py-2 bg-gray-400 text-white rounded-md hover:bg-gray-500">キャンセル</button><button onClick={handleUpdateSetRoster} className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">更新</button></div>
+            <div className="flex justify-center gap-4">
+              <button onClick={() => setEditingSet(null)} className="px-4 py-2 bg-gray-400 text-white rounded-md hover:bg-gray-500">キャンセル</button>
+              <button onClick={handleUpdateSetRoster} className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">更新</button>
+            </div>
           ) : (
             <button onClick={handleStartSet} className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg text-lg">セット開始</button>
           )}
@@ -135,7 +138,10 @@ export default function MatchPage() {
   };
   
   const renderContent = () => {
-    if (editingSet) { return renderRosterSelector(true); }
+    if (editingSet) {
+      return renderRosterSelector(true);
+    }
+
     if (isMatchFinished) {
       return (
         <div className="bg-white p-8 rounded-b-lg shadow-md text-center">
@@ -144,15 +150,17 @@ export default function MatchPage() {
           <p className="text-2xl font-bold mt-2 text-blue-600">{ownSetsWon > opponentSetsWon ? "勝利！" : "敗北"}</p>
           <div className="mt-8">
             <h4 className="text-lg font-semibold mb-2 text-gray-800">終了したセットの編集</h4>
-            <ul className="space-y-2">{sets.map(set => (
-              <li key={set.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md">
-                <span className="text-gray-800 font-medium">第{set.index}セット ({set.score.own} - {set.score.opponent})</span>
-                <div className="flex gap-2">
-                  <button onClick={() => handleEditSetRoster(set)} className="px-3 py-1 bg-gray-500 text-white text-xs font-semibold rounded-md hover:bg-gray-600">選手</button>
-                  <button onClick={() => handleReopenSet(set.id)} className="px-3 py-1 bg-green-500 text-white text-xs font-semibold rounded-md hover:bg-green-600">記録</button>
-                </div>
-              </li>
-            ))}</ul>
+            <ul className="space-y-2">
+              {sets.map(set => (
+                <li key={set.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md">
+                  <span className="text-gray-800 font-medium">第{set.index}セット ({set.score.own} - {set.score.opponent})</span>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEditSetRoster(set)} className="px-3 py-1 bg-gray-500 text-white text-xs font-semibold rounded-md hover:bg-gray-600">選手</button>
+                    <button onClick={() => handleReopenSet(set.id)} className="px-3 py-1 bg-green-500 text-white text-xs font-semibold rounded-md hover:bg-green-600">記録</button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       );
@@ -161,8 +169,18 @@ export default function MatchPage() {
     if (activeSet) {
       return (
         <div className="bg-white rounded-b-lg shadow-md">
-          <div className="p-4 border-b flex justify-between items-center"><div className="flex-1"><h2 className="text-xl font-bold text-center text-gray-800">第{activeSet.index}セット</h2></div><button onClick={handleEndSetManually} className="ml-4 px-3 py-1 bg-yellow-500 text-white text-sm font-semibold rounded-md hover:bg-yellow-600">セット終了</button></div>
-          <div className="p-4 border-b"><div className="flex justify-around items-center"><div className="text-center"><p className="text-lg font-semibold text-gray-800">自チーム</p><p className="text-5xl font-bold text-gray-900">{activeSet.score.own}</p></div><div className="text-2xl font-bold text-gray-400">-</div><div className="text-center"><p className="text-lg font-semibold text-gray-800">{match.opponent}</p><p className="text-5xl font-bold text-gray-900">{activeSet.score.opponent}</p></div></div><div className="mt-4 flex justify-center gap-4"><button onClick={() => handleRecordEvent('opponent_error', 'point', null)} className="px-4 py-2 bg-green-100 text-green-800 text-sm font-semibold rounded-md hover:bg-green-200">相手のミス</button><button onClick={() => handleRecordEvent('own_error', 'fail', null)} className="px-4 py-2 bg-red-100 text-red-800 text-sm font-semibold rounded-md hover:bg-red-200">こちらのミス</button></div></div>
+          <div className="p-4 border-b flex justify-between items-center">
+            <div className="flex-1"><h2 className="text-xl font-bold text-center text-gray-800">第{activeSet.index}セット</h2></div>
+            <button onClick={handleEndSetManually} className="ml-4 px-3 py-1 bg-yellow-500 text-white text-sm font-semibold rounded-md hover:bg-yellow-600">セット終了</button>
+          </div>
+          <div className="p-4 border-b">
+            <div className="flex justify-around items-center">
+              <div className="text-center"><p className="text-lg font-semibold text-gray-800">自チーム</p><p className="text-5xl font-bold text-gray-900">{activeSet.score.own}</p></div>
+              <div className="text-2xl font-bold text-gray-400">-</div>
+              <div className="text-center"><p className="text-lg font-semibold text-gray-800">{match.opponent}</p><p className="text-5xl font-bold text-gray-900">{activeSet.score.opponent}</p></div>
+            </div>
+            <div className="mt-4 flex justify-center gap-4"><button onClick={() => handleRecordEvent('opponent_error', 'point', null)} className="px-4 py-2 bg-green-100 text-green-800 text-sm font-semibold rounded-md hover:bg-green-200">相手のミス</button><button onClick={() => handleRecordEvent('own_error', 'fail', null)} className="px-4 py-2 bg-red-100 text-red-800 text-sm font-semibold rounded-md hover:bg-red-200">こちらのミス</button></div>
+          </div>
           <div className="p-4 bg-gray-50">
             {selectedPlayerForEvent ? (
               <div className="p-4 bg-blue-50 rounded-lg">
