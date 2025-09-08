@@ -11,26 +11,23 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// クライアントサイドでのみFirebaseを初期化する
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+// --- グローバルスコープで一度だけ初期化するためのヘルパー ---
+// これにより、Next.jsのホットリロード時にもインスタンスが再利用される
+const initializeFirebaseApp = () => {
+  if (getApps().length) {
+    return getApp();
+  }
+  return initializeApp(firebaseConfig);
+};
 
+const app = initializeFirebaseApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// ローカルでの開発時（クライアントサイド）のみ、Emulatorに接続する
-if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-  console.log("Connecting to Firebase Emulator...");
-  try {
-    // 既に接続済みでないことを確認してから接続
-    if (!("_emulator" in auth)) {
-      connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
-    }
-    if (!("_settings" in db && db._settings.host)) {
-      connectFirestoreEmulator(db, '127.0.0.1', 8080);
-    }
-  } catch (error) {
-    console.error("Failed to connect to Firebase Emulator", error);
-  }
-}
-
-export { app, auth, db };
+// --- Emulatorへの接続 ---
+// process.env.NODE_ENV === 'development' はビルド時には 'production' になるため、
+// このブロックはローカル開発サーバーでしか実行されない
+if (process.env.NODE_ENV === 'development') {
+  // このフラグは、ホットリロードで何度も接続しようとするのを防ぐ
+  // @ts-ignore
+  if (!globalThis.__EMULATORS_CONNE
