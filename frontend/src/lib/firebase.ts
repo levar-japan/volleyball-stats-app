@@ -1,6 +1,6 @@
-import { initializeApp, getApp, getApps } from "firebase/app";
-import { getAuth, connectAuthEmulator } from "firebase/auth";
-import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { initializeApp, getApp, getApps, FirebaseApp } from "firebase/app";
+import { getAuth, connectAuthEmulator, Auth } from "firebase/auth";
+import { getFirestore, connectFirestoreEmulator, Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -11,18 +11,32 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-let app;
-if (typeof window !== 'undefined') {
-  app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+let app: FirebaseApp;
+let auth: Auth;
+let db: Firestore;
+
+// Vercelのビルドプロセス(サーバーサイド)とブラウザ(クライアントサイド)の両方で
+// 安全にFirebaseを初期化する
+if (getApps().length === 0) {
+  app = initializeApp(firebaseConfig);
+} else {
+  app = getApp();
 }
 
-const auth = getAuth(app);
-const db = getFirestore(app);
+auth = getAuth(app);
+db = getFirestore(app);
 
+// ローカルでの開発時（クライアントサイド）のみ、Emulatorに接続する
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
   console.log("Connecting to Firebase Emulator...");
-  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
-  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+  // ホットリロード時の二重接続を防ぐ
+  try {
+    connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+    connectFirestoreEmulator(db, '127.0.0.1', 8080);
+  } catch (error) {
+    // 既に接続済みの場合はエラーになるが、無視して問題ない
+    // console.warn("Emulator already connected.", error);
+  }
 }
 
 export { app, auth, db };
