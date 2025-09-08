@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useFirebase } from '@/app/FirebaseProvider';
 import { doc, getDoc, collection, getDocs, query, where, writeBatch, serverTimestamp, Timestamp, runTransaction, onSnapshot, updateDoc, orderBy, deleteDoc } from 'firebase/firestore';
 
-// (型定義は変更なし)
+// 型定義
 interface Match { id: string; opponent: string; matchDate: Timestamp; status: string; }
 interface Player { id:string; displayName: string; }
 interface RosterMember { playerId: string; position: string; }
@@ -17,7 +17,6 @@ export default function MatchPage() {
   const router = useRouter();
   const pathname = usePathname();
   const matchId = pathname.split('/').pop() || '';
-
   const [match, setMatch] = useState<Match | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [sets, setSets] = useState<SetData[]>([]);
@@ -29,166 +28,211 @@ export default function MatchPage() {
   const [selectedLiberos, setSelectedLiberos] = useState<Set<string>>(new Set());
   const [activeSet, setActiveSet] = useState<SetData | null>(null);
   const [selectedPlayerForEvent, setSelectedPlayerForEvent] = useState<(Player & { position: string }) | null>(null);
-  const [editingSet, setEditingSet] = useState<SetData | null>(null); // ★★★★★ セット編集用のStateを追加 ★★★★★
+  const [isSelectingForNextSet, setIsSelectingForNextSet] = useState(false);
 
-  // (useEffect群は変更なし)
-  useEffect(() => { /* ... */ }, [db, matchId]);
-  useEffect(() => { /* ... */ }, [teamId, db, matchId]);
   useEffect(() => {
-    // ★★★★★ セット編集状態を考慮 ★★★★★
-    if (editingSet) {
+    if (!db || !matchId) return;
+    let matchUnsubscribe: (() => void) | undefined;
+    const fetchInitialData = async () => {
+      setLoading(true); setError(null);
+      try {
+        const teamsQuery = query(collection(db, 'teams'), where('code4', '==', '1234'));
+        const teamsSnapshot = await getDocs(teamsQuery);
+        if (teamsSnapshot.empty) throw new Error("Team not found.");
+        const currentTeamId = teamsSnapshot.docs[0].id;
+        setTeamId(currentTeamId);
+        
+        const matchRef = doc(db, `teams/${currentTeamId}/matches/${matchId}`);
+        matchUnsubscribe = onSnapshot(matchRef, (doc) => {
+          if (doc.exists()) { setMatch({ id: doc.id, ...doc.data() } as Match); }
+          else { throw new Error("Match not found."); }
+        });
+
+        const playersRef = collection(db, `teams/${currentTeamId}/players`);
+        const playersSnap = await getDocs(playersRef);
+        setPlayers(playersSnap.docs.map(d => ({ id: d.id, ...d.data() } as Player)));
+      } catch (err) { setError((err as Error).message); setLoading(false); }
+    };
+    fetchInitialData();
+    return () => { if (matchUnsubscribe) matchUnsubscribe(); }
+  }, [db, matchId]);
+
+  useEffect(() => {
+    if (!teamId) return;
+    const setsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets`);
+    const q = query(setsRef, orderBy("index"));
+    const unsubscribe = onSnapshot(q, (snapshot) => { setSets(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as SetData))); setLoading(false); }, (err) => { console.error(err); setError("セット情報の取得に失敗しました。"); setLoading(false); });
+    return () => unsubscribe();
+  }, [teamId, db, matchId]);
+
+  useEffect(() => {
+    if (isSelectingForNextSet) {
       setActiveSet(null);
-    } else {
-      setActiveSet(sets.find(s => s.status === 'ongoing') || null);
+      return;
     }
-  }, [sets, editingSet]);
-  useEffect(() => { /* ... */ }, [activeSet, teamId, db, matchId]);
+    const currentActiveSet = sets.find(s => s.status === 'ongoing') || null;
+    setActiveSet(currentActiveSet);
+  }, [sets, isSelectingForNextSet]);
 
-  const handleRosterChange = (playerId: string, position: string) => { /* ... */ };
-  const handleLiberoSelect = (playerId: string) => { /* ... */ };
-  const handleStartSet = async () => { /* ... */ };
-  const handleSelectPlayerForEvent = (rosterMember: RosterMember) => { /* ... */ };
-  const checkSetFinished = (own: number, opp: number, isFinal: boolean) => { /* ... */ };
-  const handleRecordEvent = async (type: string, result: string, playerId: string | null = selectedPlayerForEvent?.id || null) => { /* ... */ };
-  const handleEndSetManually = async () => { /* ... */ };
-  const handleFinishMatchManually = async () => { /* ... */ };
-  const handleUndoEvent = async () => { /* ... */ };
+  useEffect(() => {
+    if (!activeSet || !teamId) { setEvents([]); return; }
+    const eventsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets/${activeSet.id}/events`);
+    const q = query(eventsRef, orderBy("at", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setEvents(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Event)));
+    });
+    return () => unsubscribe();
+  }, [activeSet, teamId, db, matchId]);
 
-  // ★★★★★ 新しい関数を追加 ★★★★★
-  const handleEditSetRoster = (set: SetData) => {
-    setEditingSet(set);
-    const rosterMap = new Map<string, string>();
-    set.roster.forEach(member => rosterMap.set(member.playerId, member.position));
-    setSelectedRoster(rosterMap);
-    setSelectedLiberos(new Set(set.liberos));
-  };
+  const handleRosterChange = (playerId: string, position: string) => { setSelectedRoster(prev => { const newRoster = new Map(prev); if (position) { newRoster.set(playerId, position); } else { newRoster.delete(playerId); } return newRoster; }); };
+  const handleLiberoSelect = (playerId: string) => { setSelectedLiberos(prev => { const s = new Set(prev); if (s.has(playerId)) { s.delete(playerId); } else if (s.size < 2) { s.add(playerId); } return s; }); };
+  const handleStartSet = async () => { if (selectedRoster.size === 0) { alert("出場選手を1人以上選択してください。"); return; } if (!teamId || !matchId) { return; } try { const batch = writeBatch(db); const newSetRef = doc(collection(db, `teams/${teamId}/matches/${matchId}/sets`)); const rosterData = Array.from(selectedRoster.entries()).map(([playerId, position]) => ({ playerId, position })); batch.set(newSetRef, { index: sets.length + 1, status: 'ongoing', roster: rosterData, liberos: Array.from(selectedLiberos), score: { own: 0, opponent: 0 }, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }); const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`); batch.update(matchRef, { status: 'ongoing', updatedAt: serverTimestamp() }); await batch.commit(); setIsSelectingForNextSet(false); } catch (e) { console.error(e); } };
+  const handleSelectPlayerForEvent = (rosterMember: RosterMember) => { const player = players.find(p => p.id === rosterMember.playerId); if (player) { setSelectedPlayerForEvent({ ...player, position: rosterMember.position }); } };
+  const checkSetFinished = (own: number, opp: number, isFinal: boolean) => { const pts = isFinal ? 15 : 25; if (own >= pts && own >= opp + 2) return 'own_won'; if (opp >= pts && opp >= own + 2) return 'opponent_won'; return null; };
+  const handleRecordEvent = async (type: string, result: string, playerId: string | null = selectedPlayerForEvent?.id || null) => { if (!teamId || !matchId || !activeSet) return; try { await runTransaction(db, async (t) => { const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${activeSet.id}`); const setDoc = await t.get(setRef); if (!setDoc.exists()) throw "Set does not exist!"; const d = setDoc.data(); let own = d.score.own; let opp = d.score.opponent; if (result === 'point' || type === 'opponent_error') { own++; } else if (result === 'fail' || type === 'own_error') { opp++; } t.set(doc(collection(setRef, 'events')), { setIndex: activeSet.index, playerId, type, result, at: serverTimestamp() }); const isFinal = activeSet.index >= 4; const setResult = checkSetFinished(own, opp, isFinal); const newStatus = setResult ? 'finished' : 'ongoing'; t.update(setRef, { score: { own, opponent: opp }, status: newStatus, updatedAt: serverTimestamp() }); }); const setsQuery = query(collection(db, `teams/${teamId}/matches/${matchId}/sets`)); const setsSnap = await getDocs(setsQuery); let ownWon = 0, oppWon = 0; setsSnap.forEach(d => { const data = d.data(); if (data.status === 'finished') { if (data.score.own > data.score.opponent) ownWon++; else oppWon++; } }); if (ownWon >= 3 || oppWon >= 3) { await updateDoc(doc(db, `teams/${teamId}/matches/${matchId}`), { status: 'finished' }); } } catch (e) { console.error(e); } finally { setSelectedPlayerForEvent(null); } };
+  const handleEndSetManually = async () => { if (!activeSet || !teamId) return; if (!window.confirm(`第${activeSet.index}セットを終了しますか？`)) return; try { await updateDoc(doc(db, `teams/${teamId}/matches/${matchId}/sets/${activeSet.id}`), { status: 'finished', updatedAt: serverTimestamp() }); } catch (e) { console.error(e); } };
+  const handleGoToNextSet = () => { setIsSelectingForNextSet(true); setSelectedRoster(new Map()); setSelectedLiberos(new Set()); };
+  const handleFinishMatchManually = async () => { if (!teamId || !matchId) return; if (!window.confirm("この試合を終了しますか？")) return; try { const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`); await updateDoc(matchRef, { status: 'finished', updatedAt: serverTimestamp() }); router.push('/dashboard'); } catch (err) { console.error(err); } };
+  const handleUndoEvent = async () => { if (events.length === 0 || !teamId || !activeSet) return; if (!window.confirm("直前の記録を取り消しますか？")) return; const lastEvent = events[0]; try { await runTransaction(db, async (t) => { const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${activeSet.id}`); const setDoc = await t.get(setRef); if (!setDoc.exists()) throw "Set does not exist!"; t.delete(doc(setRef, `events/${lastEvent.id}`)); const score = setDoc.data().score; let own = score.own; let opp = score.opponent; if (lastEvent.result === 'point' || lastEvent.type === 'opponent_error') own--; else if (lastEvent.result === 'fail' || lastEvent.type === 'own_error') opp--; t.update(setRef, { score: { own, opponent: opp }, updatedAt: serverTimestamp() }); }); } catch (err) { console.error("Undo transaction failed: ", err); } };
+  const handleReopenSet = async (setId: string) => { if (!teamId || !matchId) return; if (activeSet) { alert("進行中のセットがあります。まずそのセットを終了してください。"); return; } if (!window.confirm("この終了したセットの記録を再開しますか？")) return; try { const batch = writeBatch(db); const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${setId}`); batch.update(setRef, { status: 'ongoing' }); const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`); batch.update(matchRef, { status: 'ongoing' }); await batch.commit(); } catch (err) { console.error(err); } };
 
-  const handleUpdateSetRoster = async () => {
-    if (!editingSet || !teamId) return;
-    try {
-      const rosterData = Array.from(selectedRoster.entries()).map(([playerId, position]) => ({ playerId, position }));
-      const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${editingSet.id}`);
-      await updateDoc(setRef, {
-        roster: rosterData,
-        liberos: Array.from(selectedLiberos),
-        updatedAt: serverTimestamp(),
-      });
-      setEditingSet(null); // 編集モードを終了
-    } catch (err) {
-      console.error(err);
-      setError("ロスターの更新に失敗しました。");
-    }
-  };
-
-  const handleReopenSet = async (setId: string) => {
-    if (!teamId || !matchId) return;
-    if (activeSet) { alert("進行中のセットがあります。まずそのセットを終了してください。"); return; }
-    if (!window.confirm("この終了したセットの記録を再開しますか？")) return;
-    try {
-      const batch = writeBatch(db);
-      const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${setId}`);
-      batch.update(setRef, { status: 'ongoing' });
-      const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`);
-      batch.update(matchRef, { status: 'ongoing' });
-      await batch.commit();
-    } catch (err) { console.error(err); }
-  };
-  
-  if (loading || !match) return (<main className="..."><p>試合情報を読み込んでいます...</p></main>);
-  if (error) return (<main className="..."><p>エラー: {error}</p></main>);
+  if (loading || !match) return (<main className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合情報を読み込んでいます...</p></main>);
+  if (error) return (<main className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></main>);
 
   const ownSetsWon = sets.filter(s => s.status === 'finished' && s.score.own > s.score.opponent).length;
   const opponentSetsWon = sets.filter(s => s.status === 'finished' && s.score.own < s.score.opponent).length;
   const isMatchFinished = match?.status === 'finished';
 
-  const renderRosterSelector = (isEditing = false) => {
+  const renderRosterSelector = () => {
     return (
       <div className="bg-white p-6 rounded-b-lg shadow-md">
-        <h2 className="text-xl font-semibold mb-1 text-gray-800">
-          {isEditing ? `第${editingSet?.index}セットの選手を編集` : `第${sets.length + 1}セットを開始`}
-        </h2>
+        <h2 className="text-xl font-semibold mb-1 text-gray-800">{sets.length > 0 ? `第${sets.length + 1}セットを開始` : '最初のセットを開始'}</h2>
         <p className="text-sm text-gray-700 mb-4">出場する選手と、そのポジションを選択してください。</p>
         <div className="space-y-4">
           {players.map(p => (
-            <div key={p.id} className={`p-3 ...`}>
-              {/* ... ロスター選択のチェックボックスとセレクトボックス ... */}
+            <div key={p.id} className={`p-3 rounded-lg flex items-center gap-4 ${selectedRoster.has(p.id) ? 'bg-blue-50' : 'bg-gray-50'}`}>
+              <input type="checkbox" checked={selectedRoster.has(p.id)} onChange={(e) => { handleRosterChange(p.id, e.target.checked ? 'OH' : ''); }} className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"/>
+              <p className="font-semibold text-gray-900 flex-grow">{p.displayName}</p>
+              <select value={selectedRoster.get(p.id) || ''} onChange={(e) => handleRosterChange(p.id, e.target.value)} disabled={!selectedRoster.has(p.id)} className="border border-gray-300 p-2 rounded-md text-gray-900 disabled:bg-gray-200">
+                <option value="">ポジション</option><option value="S">S</option><option value="MB">MB</option><option value="OH">OH</option><option value="OP">OP</option><option value="L">L</option>
+              </select>
             </div>
           ))}
         </div>
         <div className="mt-6 text-center">
-          {isEditing ? (
-            <div className="flex justify-center gap-4">
-              <button onClick={() => setEditingSet(null)} className="bg-gray-400 ...">キャンセル</button>
-              <button onClick={handleUpdateSetRoster} className="bg-blue-500 ...">更新</button>
-            </div>
-          ) : (
-            <button onClick={handleStartSet} className="bg-green-500 ...">セット開始</button>
-          )}
+          <button onClick={handleStartSet} className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg text-lg">セット開始</button>
         </div>
       </div>
     );
   };
-  
+
   const renderContent = () => {
-    if (editingSet) {
-      return renderRosterSelector(true);
+    if (isMatchFinished) {
+      return (
+        <div className="bg-white p-8 rounded-b-lg shadow-md text-center">
+          <h2 className="text-3xl font-bold mb-4 text-gray-800">試合終了</h2>
+          <p className="text-xl text-gray-800">{ownSetsWon} - {opponentSetsWon}</p>
+          <p className="text-2xl font-bold mt-2 text-blue-600">{ownSetsWon > opponentSetsWon ? "勝利！" : "敗北"}</p>
+          <div className="mt-8">
+            <h4 className="text-lg font-semibold mb-2 text-gray-800">終了したセットの編集</h4>
+            <ul className="space-y-2">{sets.map(set => (
+              <li key={set.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md">
+                <span className="text-gray-800 font-medium">第{set.index}セット</span>
+                <span className={`font-bold px-3 py-1 rounded-full text-sm ${set.score.own > set.score.opponent ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                  {set.score.own} - {set.score.opponent}
+                </span>
+                <button onClick={() => handleReopenSet(set.id)} className="px-3 py-1 bg-blue-500 text-white text-sm font-semibold rounded-md hover:bg-blue-600">編集</button>
+              </li>
+            ))}</ul>
+          </div>
+        </div>
+      );
     }
-    // ... (既存のrenderContentのロジックはほぼ同じ)
+    
+    if (activeSet) {
+      return (
+        <div className="bg-white rounded-b-lg shadow-md">
+          <div className="p-4 border-b flex justify-between items-center">
+            <div className="flex-1">
+              <h2 className="text-xl font-bold text-center text-gray-800">第{activeSet.index}セット</h2>
+            </div>
+            <button onClick={handleEndSetManually} className="ml-4 px-3 py-1 bg-yellow-500 text-white text-sm font-semibold rounded-md hover:bg-yellow-600">セット終了</button>
+          </div>
+          <div className="p-4 border-b">
+            <div className="flex justify-around items-center">
+              <div className="text-center"><p className="text-lg font-semibold text-gray-800">自チーム</p><p className="text-5xl font-bold text-gray-900">{activeSet.score.own}</p></div>
+              <div className="text-2xl font-bold text-gray-400">-</div>
+              <div className="text-center"><p className="text-lg font-semibold text-gray-800">{match.opponent}</p><p className="text-5xl font-bold text-gray-900">{activeSet.score.opponent}</p></div>
+            </div>
+            <div className="mt-4 flex justify-center gap-4">
+              <button onClick={() => handleRecordEvent('opponent_error', 'point', null)} className="px-4 py-2 bg-green-100 text-green-800 text-sm font-semibold rounded-md hover:bg-green-200">相手のミス</button>
+              <button onClick={() => handleRecordEvent('own_error', 'fail', null)} className="px-4 py-2 bg-red-100 text-red-800 text-sm font-semibold rounded-md hover:bg-red-200">こちらのミス</button>
+            </div>
+          </div>
+          <div className="p-4 bg-gray-50">
+            {selectedPlayerForEvent ? (
+              <div className="p-4 bg-blue-50 rounded-lg">
+                <p className="font-bold text-lg mb-2 text-center text-gray-800">{selectedPlayerForEvent.displayName} のプレー</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs sm:text-sm">
+                  <div className="flex flex-col gap-1"><p className="font-bold text-gray-800">サーブ</p><button onClick={() => handleRecordEvent('serve', 'point')} className="bg-green-500 hover:bg-green-600 text-white p-2 rounded">得点</button><button onClick={() => handleRecordEvent('serve', 'success')} className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded">成功</button><button onClick={() => handleRecordEvent('serve', 'fail')} className="bg-red-500 hover:bg-red-600 text-white p-2 rounded">失点</button></div>
+                  <div className="flex flex-col gap-1"><p className="font-bold text-gray-800">スパイク</p><button onClick={() => handleRecordEvent('spike', 'point')} className="bg-green-500 hover:bg-green-600 text-white p-2 rounded">得点</button><button onClick={() => handleRecordEvent('spike', 'success')} className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded">成功</button><button onClick={() => handleRecordEvent('spike', 'fail')} className="bg-red-500 hover:bg-red-600 text-white p-2 rounded">失点</button></div>
+                  <div className="flex flex-col gap-1"><p className="font-bold text-gray-800">ブロック</p><button onClick={() => handleRecordEvent('block', 'point')} className="bg-green-500 hover:bg-green-600 text-white p-2 rounded">得点</button><button onClick={() => handleRecordEvent('block', 'success')} className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded">成功</button><button onClick={() => handleRecordEvent('block', 'fail')} className="bg-red-500 hover:bg-red-600 text-white p-2 rounded">失点</button></div>
+                  <div className="flex flex-col gap-1"><p className="font-bold text-gray-800">ディグ</p><button onClick={() => handleRecordEvent('dig', 'success')} className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded">成功</button><button onClick={() => handleRecordEvent('dig', 'fail')} className="bg-red-500 hover:bg-red-600 text-white p-2 rounded">失敗</button></div>
+                </div>
+                <div className="grid grid-cols-1 mt-2"><div className="flex flex-col gap-1"><p className="font-bold text-gray-800 text-center">レセプション</p><div className="grid grid-cols-4 gap-1"><button onClick={() => handleRecordEvent('reception', 'a-pass')} className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded">A</button><button onClick={() => handleRecordEvent('reception', 'b-pass')} className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded">B</button><button onClick={() => handleRecordEvent('reception', 'c-pass')} className="bg-yellow-500 hover:bg-yellow-600 text-white p-2 rounded">C</button><button onClick={() => handleRecordEvent('reception', 'fail')} className="bg-red-500 hover:bg-red-600 text-white p-2 rounded">失点</button></div></div></div>
+                <button onClick={() => setSelectedPlayerForEvent(null)} className="mt-4 w-full text-center text-sm text-gray-600 hover:text-black">キャンセル</button>
+              </div>
+            ) : (
+              <div className="flex overflow-x-auto gap-3 pb-3">
+                {activeSet.roster.map(member => { const p = players.find(p => p.id === member.playerId); if (!p) return null; return (<div key={member.playerId} onClick={() => handleSelectPlayerForEvent(member)} className={`flex-shrink-0 w-24 h-24 p-2 rounded-lg text-center flex flex-col justify-center cursor-pointer transition-colors ${member.position === 'L' ? 'bg-orange-100 hover:bg-orange-200' : 'bg-gray-200 hover:bg-gray-300'}`}><p className="font-bold text-gray-900">{p.displayName}</p><p className="text-sm text-gray-700">{p.position}</p></div>); })}
+              </div>
+            )}
+          </div>
+          <div className="p-4 border-t">
+            <div className="flex justify-between items-center mb-2"><h3 className="font-semibold text-gray-800">直近のプレー</h3><button onClick={handleUndoEvent} disabled={events.length === 0} className="px-3 py-1 bg-yellow-500 text-white text-xs font-semibold rounded-md hover:bg-yellow-600 disabled:bg-gray-400">取り消し</button></div>
+            {events.length === 0 ? <p className="text-sm text-gray-700">まだ記録がありません。</p> : (<ul className="space-y-1 text-sm text-gray-800">{events.slice(0, 5).map(e => { const p = e.playerId ? players.find(p => p.id === e.playerId) : null; const playerName = p ? p.displayName : e.type === 'opponent_error' ? '相手チーム' : '自チーム'; return (<li key={e.id}>{playerName}: {e.type.includes('_error') ? 'ミス' : `${e.type} - ${e.result}`}</li>); })}</ul>)}
+          </div>
+        </div>
+      );
+    }
+
+    if (sets.length > 0 && !isSelectingForNextSet) {
+      return (
+        <div className="bg-white p-6 rounded-b-lg shadow-md">
+          <div className="p-8 text-center">
+            <h3 className="text-2xl font-bold mb-4 text-gray-800">セット間</h3>
+            <div className="flex justify-center items-center gap-4">
+              <button onClick={handleGoToNextSet} className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg text-lg">次のセットへ ({sets.length + 1})</button>
+              <button onClick={handleFinishMatchManually} className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-lg text-lg">試合終了</button>
+            </div>
+            <div className="mt-8">
+              <h4 className="text-lg font-semibold mb-2 text-gray-800">終了したセット</h4>
+              <ul className="space-y-2">{sets.map(set => (<li key={set.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md">
+                <span className="text-gray-800 font-medium">第{set.index}セット</span>
+                <span className={`font-bold px-3 py-1 rounded-full text-sm ${set.score.own > set.score.opponent ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                  {set.score.own} - {set.score.opponent}
+                </span>
+              </li>))}</ul>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    return renderRosterSelector();
   };
   
   return (
     <main className="min-h-screen bg-gray-100 p-2 sm:p-8">
       <div className="w-full max-w-5xl mx-auto">
-        <header className="bg-white ...">
-          {/* ... */}
+        <header className="bg-white p-4 rounded-t-lg shadow-md border-b">
+          <div className="flex justify-between items-center">
+            <div><h1 className="text-2xl sm:text-3xl font-bold text-gray-900">vs {match.opponent}</h1><p className="text-sm text-gray-700">{new Date(match.matchDate.seconds * 1000).toLocaleString('ja-JP')}</p></div>
+            <Link href="/dashboard"><span className="inline-block text-sm text-blue-600 hover:text-blue-800">&larr; ダッシュボードに戻る</span></Link>
+          </div>
+          {isMatchFinished && <div className="mt-4 p-4 bg-yellow-100 text-yellow-800 rounded-lg text-center font-semibold">この試合は終了しています。記録は編集モードです。</div>}
         </header>
-        {isMatchFinished ? (
-          <div className="bg-white p-8 rounded-b-lg shadow-md text-center">
-            {/* ... 試合終了UI ... */}
-            <div className="mt-8">
-              <h4 className="text-lg font-semibold mb-2 text-gray-800">終了したセットの編集</h4>
-              <ul className="space-y-2">
-                {sets.map(set => (
-                  <li key={set.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md">
-                    <span className="text-gray-800 font-medium">第{set.index}セット ({set.score.own} - {set.score.opponent})</span>
-                    <div className="flex gap-2">
-                      <button onClick={() => handleEditSetRoster(set)} className="px-3 py-1 bg-gray-500 text-white text-xs font-semibold rounded-md hover:bg-gray-600">選手</button>
-                      <button onClick={() => handleReopenSet(set.id)} className="px-3 py-1 bg-green-500 text-white text-xs font-semibold rounded-md hover:bg-green-600">記録</button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        ) : activeSet ? (
-          <div className="bg-white ..."> {/* ... 記録UI ... */} </div>
-        ) : sets.length > 0 ? (
-          <div className="bg-white p-6 rounded-b-lg shadow-md">
-            <div className="p-8 text-center">
-              <h3 className="text-2xl font-bold mb-4 text-gray-800">セット間</h3>
-              <div className="flex justify-center items-center gap-4">
-                <button onClick={handleGoToNextSet} className="bg-green-500 ...">次のセットへ ({sets.length + 1})</button>
-                <button onClick={handleFinishMatchManually} className="bg-red-500 ...">試合終了</button>
-              </div>
-              <div className="mt-8">
-                <h4 className="text-lg font-semibold mb-2 text-gray-800">終了したセットの編集</h4>
-                <ul className="space-y-2">
-                  {sets.map(set => (
-                    <li key={set.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md">
-                      <span className="text-gray-800 font-medium">第{set.index}セット ({set.score.own} - {set.score.opponent})</span>
-                      <div className="flex gap-2">
-                        <button onClick={() => handleEditSetRoster(set)} className="px-3 py-1 bg-gray-500 text-white text-xs font-semibold rounded-md hover:bg-gray-600">選手</button>
-                        <button onClick={() => handleReopenSet(set.id)} className="px-3 py-1 bg-green-500 text-white text-xs font-semibold rounded-md hover:bg-green-600">記録</button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        ) : (
-          renderRosterSelector()
-        )}
+        {renderContent()}
       </div>
     </main>
   );
