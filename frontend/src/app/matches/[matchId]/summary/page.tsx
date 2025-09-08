@@ -7,7 +7,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 
 // 型定義
 interface Player { id: string; displayName: string; }
-interface Event { playerId: string; type: string; result: string; }
+interface Event { playerId: string; type: string; result: string; setIndex: number; } // ★★★★★ setIndexを追加 ★★★★★
 interface ActionStats { success: number; fail: number; point: number; total: number; successRate: string; }
 interface ReceptionStats { a_pass: number; b_pass: number; c_pass: number; fail: number; total: number; successRate: string; }
 interface Stats {
@@ -26,13 +26,14 @@ export default function SummaryPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'rate' | 'count'>('rate'); // ★★★★★ 表示モード用のStateを追加 ★★★★★
+  const [viewMode, setViewMode] = useState<'rate' | 'count'>('rate');
+  const [totalSets, setTotalSets] = useState(0); // ★★★★★ 総セット数を管理するStateを追加 ★★★★★
+  const [selectedSet, setSelectedSet] = useState<number | 'all'>('all'); // ★★★★★ 選択中のセットを管理するStateを追加 ★★★★★
 
   useEffect(() => {
     if (!db || !matchId) return;
     const fetchData = async () => {
-      setLoading(true);
-      setError(null);
+      setLoading(true); setError(null);
       try {
         const teamsQuery = query(collection(db, 'teams'), where('code4', '==', '1234'));
         const teamSnap = await getDocs(teamsQuery);
@@ -43,6 +44,7 @@ export default function SummaryPage() {
         setPlayers(playersSnap.docs.map(d => ({ ...d.data(), id: d.id } as Player)));
 
         const setsSnap = await getDocs(collection(db, `teams/${teamId}/matches/${matchId}/sets`));
+        setTotalSets(setsSnap.size); // 総セット数をセット
         const allEvents: Event[] = [];
         for (const setDoc of setsSnap.docs) {
           const eventsSnap = await getDocs(collection(setDoc.ref, 'events'));
@@ -54,17 +56,18 @@ export default function SummaryPage() {
           });
         }
         setEvents(allEvents);
-      } catch (err) { 
-        setError((err as Error).message); 
-      } 
-      finally { 
-        setLoading(false); 
-      }
+      } catch (err) { setError((err as Error).message); } 
+      finally { setLoading(false); }
     };
     fetchData();
   }, [db, matchId]);
 
   const playerStats = useMemo(() => {
+    // ★★★★★ 選択されたセットでイベントをフィルタリング ★★★★★
+    const filteredEvents = selectedSet === 'all'
+      ? events
+      : events.filter(event => event.setIndex === selectedSet);
+
     const statsByPlayer: Record<string, Stats> = {};
     players.forEach(p => {
       statsByPlayer[p.id] = {
@@ -75,12 +78,11 @@ export default function SummaryPage() {
         dig: { success: 0, fail: 0, total: 0, successRate: '0.0%' },
       };
     });
-
-    events.forEach(event => {
+    
+    filteredEvents.forEach(event => {
       if (!statsByPlayer[event.playerId]) return;
       const { type, result } = event;
       const playerStat = statsByPlayer[event.playerId];
-
       if (type === 'serve' || type === 'spike' || type === 'block') {
         const stat = playerStat[type];
         stat.total++;
@@ -107,22 +109,18 @@ export default function SummaryPage() {
     Object.values(statsByPlayer).forEach(stats => {
       const serveTotal = stats.serve.total;
       if (serveTotal > 0) stats.serve.successRate = `${(((stats.serve.point - stats.serve.fail) / serveTotal) * 100).toFixed(1)}%`;
-      
       const spikeTotal = stats.spike.total;
       if (spikeTotal > 0) stats.spike.successRate = `${(((stats.spike.point - stats.spike.fail) / spikeTotal) * 100).toFixed(1)}%`;
-      
       const blockTotal = stats.block.total;
       if (blockTotal > 0) stats.block.successRate = `${((stats.block.point / blockTotal) * 100).toFixed(1)}%`;
-
       const receptionTotal = stats.reception.total;
       if (receptionTotal > 0) stats.reception.successRate = `${(((stats.reception.a_pass + stats.reception.b_pass) / receptionTotal) * 100).toFixed(1)}%`;
-      
       const digTotal = stats.dig.success + stats.dig.fail;
       if (digTotal > 0) stats.dig.successRate = `${((stats.dig.success / digTotal) * 100).toFixed(1)}%`;
     });
 
     return statsByPlayer;
-  }, [events, players]);
+  }, [events, players, selectedSet]); // ★★★★★ selectedSetを依存配列に追加 ★★★★★
 
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-100"><p>集計データを読み込んでいます...</p></main>;
   if (error) return <main className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></main>;
@@ -132,27 +130,38 @@ export default function SummaryPage() {
       <div className="w-full max-w-6xl mx-auto">
         <header className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">個人成績</h1>
-          <Link href="/dashboard">
-            <span className="text-sm text-blue-600 hover:text-blue-800">&larr; ダッシュボードに戻る</span>
-          </Link>
+          <Link href="/dashboard"><span className="text-sm text-blue-600 hover:text-blue-800">&larr; ダッシュボードに戻る</span></Link>
         </header>
         <div className="bg-white p-6 rounded-lg shadow-md">
-          <div className="mb-4 flex justify-end">
+          {/* ★★★★★ UIの変更箇所 ★★★★★ */}
+          <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+            {/* セット選択タブ */}
+            <div className="flex-grow">
+              <div className="border-b border-gray-200">
+                <nav className="-mb-px flex space-x-6 overflow-x-auto">
+                  <button onClick={() => setSelectedSet('all')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${selectedSet === 'all' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                    試合全体
+                  </button>
+                  {Array.from({ length: totalSets }, (_, i) => i + 1).map(setNum => (
+                    <button key={setNum} onClick={() => setSelectedSet(setNum)} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${selectedSet === setNum ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                      第{setNum}セット
+                    </button>
+                  ))}
+                </nav>
+              </div>
+            </div>
+            {/* 表示モード切り替え */}
             <div className="inline-flex rounded-md shadow-sm">
-              <button
-                onClick={() => setViewMode('rate')}
-                className={`px-4 py-2 text-sm font-medium rounded-l-lg border ${viewMode === 'rate' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-              >
+              <button onClick={() => setViewMode('rate')} className={`px-4 py-2 text-sm font-medium rounded-l-lg border ${viewMode === 'rate' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
                 率で表示
               </button>
-              <button
-                onClick={() => setViewMode('count')}
-                className={`px-4 py-2 text-sm font-medium rounded-r-lg border ${viewMode === 'count' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-              >
+              <button onClick={() => setViewMode('count')} className={`px-4 py-2 text-sm font-medium rounded-r-lg border ${viewMode === 'count' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
                 数で表示
               </button>
             </div>
           </div>
+          {/* ★★★★★ ここまで ★★★★★ */}
+
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
