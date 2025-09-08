@@ -32,6 +32,7 @@ export default function DashboardPage() {
     if (!db) return;
     let playersUnsubscribe: (() => void) | undefined;
     let matchesUnsubscribe: (() => void) | undefined;
+
     const findTeamAndSubscribe = async () => {
       setLoading(true);
       setError('');
@@ -136,6 +137,30 @@ export default function DashboardPage() {
     }
   };
 
+  const handleDeleteMatch = async (matchId: string) => {
+    if (!teamId) return;
+    if (!window.confirm("この試合のすべての記録を完全に削除します。よろしいですか？\nこの操作は元に戻せません。")) return;
+    try {
+      const setsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets`);
+      const setsSnap = await getDocs(setsRef);
+      const batch = writeBatch(db);
+      for (const setDoc of setsSnap.docs) {
+        const eventsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets/${setDoc.id}/events`);
+        const eventsSnap = await getDocs(eventsRef);
+        eventsSnap.forEach(eventDoc => {
+          batch.delete(eventDoc.ref);
+        });
+        batch.delete(setDoc.ref);
+      }
+      const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`);
+      batch.delete(matchRef);
+      await batch.commit();
+    } catch (err) {
+      console.error("試合の削除に失敗しました: ", err);
+      setError("試合の削除中にエラーが発生しました。");
+    }
+  };
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-100">
@@ -218,18 +243,19 @@ export default function DashboardPage() {
                       {m.status === 'finished' ? '試合終了' : '試合中/予定'}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2 justify-end items-center" style={{ minWidth: '220px' }}>
+                  <div className="flex flex-wrap gap-2 justify-end items-center" style={{ minWidth: '280px' }}>
                     <Link href={`/matches/${m.id}/summary`}>
                       <span className="px-3 py-2 bg-gray-500 text-white text-xs font-semibold rounded-md hover:bg-gray-600">集計</span>
                     </Link>
                     <Link href={`/matches/${m.id}`}>
                       <span className={`px-3 py-2 text-white text-xs font-semibold rounded-md ${m.status === 'finished' ? 'bg-purple-500 hover:bg-purple-600' : 'bg-blue-500 hover:bg-blue-600'}`}>
-                        {m.status === 'finished' ? '記録を編集' : '記録'}
+                        {m.status === 'finished' ? '編集' : '記録'}
                       </span>
                     </Link>
                     {m.status !== 'finished' && (
-                      <button onClick={() => handleFinishMatch(m.id)} className="px-3 py-2 bg-red-500 text-white text-xs font-semibold rounded-md hover:bg-red-600">試合終了</button>
+                      <button onClick={() => handleFinishMatch(m.id)} className="px-3 py-2 bg-yellow-600 text-white text-xs font-semibold rounded-md hover:bg-yellow-700">試合終了</button>
                     )}
+                    <button onClick={() => handleDeleteMatch(m.id)} className="px-3 py-2 bg-red-500 text-white text-xs font-semibold rounded-md hover:bg-red-600">削除</button>
                   </div>
                 </li>
               ))
