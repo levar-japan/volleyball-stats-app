@@ -94,7 +94,6 @@ export default function SummaryPage() {
     fetchData();
   }, [db, matchId]);
 
-  // ★★★★★ この新しいuseMemoを追加 ★★★★★
   const participatingPlayers = useMemo(() => {
     const participatingPlayerIds = new Set(events.map(e => e.playerId));
     return players.filter(p => participatingPlayerIds.has(p.id));
@@ -106,8 +105,6 @@ export default function SummaryPage() {
       : events.filter(event => event.setIndex === selectedSet);
 
     const statsByPlayer: Record<string, Stats> = {};
-
-    // ★★★★★ 集計対象をparticipatingPlayersに変更 ★★★★★
     participatingPlayers.forEach(p => {
       statsByPlayer[p.id] = {
         serve: { success: 0, fail: 0, point: 0, total: 0, successRate: '0.0%' },
@@ -120,7 +117,6 @@ export default function SummaryPage() {
 
     filteredEvents.forEach(event => {
       if (!statsByPlayer[event.playerId]) return;
-      
       const { type, result } = event;
       const playerStat = statsByPlayer[event.playerId];
 
@@ -165,7 +161,7 @@ export default function SummaryPage() {
     });
 
     return statsByPlayer;
-  }, [events, participatingPlayers, selectedSet]); // ★★★★★ 依存配列を変更 ★★★★★
+  }, [events, participatingPlayers, selectedSet]);
 
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-100"><p>集計データを読み込んでいます...</p></main>;
   if (error) return <main className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></main>;
@@ -234,7 +230,6 @@ export default function SummaryPage() {
                 )}
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {/* ★★★★★ 表示対象をparticipatingPlayersに変更 ★★★★★ */}
                 {participatingPlayers.map(player => {
                   const stats = playerStats[player.id];
                   if (!stats) return null;
@@ -243,9 +238,9 @@ export default function SummaryPage() {
                       <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{player.displayName}</td>
                       {viewMode === 'rate' ? (
                         <>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.serve.successRate} ({stats.serve.point})</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.spike.successRate} ({stats.spike.point})</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.block.successRate} ({stats.block.point})</td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.serve.successRate}</td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.spike.successRate}</td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.block.successRate}</td>
                           <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.reception.successRate}</td>
                           <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.dig.successRate}</td>
                         </>
