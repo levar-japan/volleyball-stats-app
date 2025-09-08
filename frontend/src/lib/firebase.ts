@@ -11,31 +11,21 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-let app: FirebaseApp;
-let auth: Auth;
-let db: Firestore;
+// Vercelのビルドプロセスとブラウザの両方で安全にFirebaseを初期化する
+const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Vercelのビルドプロセス(サーバーサイド)とブラウザ(クライアントサイド)の両方で
-// 安全にFirebaseを初期化する
-if (getApps().length === 0) {
-  app = initializeApp(firebaseConfig);
-} else {
-  app = getApp();
-}
-
-auth = getAuth(app);
-db = getFirestore(app);
+const auth: Auth = getAuth(app);
+const db: Firestore = getFirestore(app);
 
 // ローカルでの開発時（クライアントサイド）のみ、Emulatorに接続する
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-  console.log("Connecting to Firebase Emulator...");
   // ホットリロード時の二重接続を防ぐ
   try {
     connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
     connectFirestoreEmulator(db, '127.0.0.1', 8080);
   } catch (error) {
-    // 既に接続済みの場合はエラーになるが、無視して問題ない
-    // console.warn("Emulator already connected.", error);
+    // 既に接続済みの場合はエラーになるが、開発中は無視して問題ない
+    // console.warn("Emulator already connected or failed to connect:", error);
   }
 }
 
