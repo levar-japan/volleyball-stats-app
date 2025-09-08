@@ -17,6 +17,7 @@ export default function MatchPage() {
   const router = useRouter();
   const pathname = usePathname();
   const matchId = pathname.split('/').pop() || '';
+
   const [match, setMatch] = useState<Match | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [sets, setSets] = useState<SetData[]>([]);
@@ -184,7 +185,7 @@ export default function MatchPage() {
               </div>
             ) : (
               <div className="flex overflow-x-auto gap-3 pb-3">
-                {activeSet.roster.map(member => { const p = players.find(p => p.id === member.playerId); if (!p) return null; return (<div key={member.playerId} onClick={() => handleSelectPlayerForEvent(member)} className={`flex-shrink-0 w-24 h-24 p-2 rounded-lg text-center flex flex-col justify-center cursor-pointer transition-colors ${member.position === 'L' ? 'bg-orange-100 hover:bg-orange-200' : 'bg-gray-200 hover:bg-gray-300'}`}><p className="font-bold text-gray-900">{p.displayName}</p><p className="text-sm text-gray-700">{p.position}</p></div>); })}
+                {activeSet.roster.map(member => { const p = players.find(p => p.id === member.playerId); if (!p) return null; return (<div key={member.playerId} onClick={() => handleSelectPlayerForEvent(member)} className={`flex-shrink-0 w-24 h-24 p-2 rounded-lg text-center flex flex-col justify-center cursor-pointer transition-colors ${member.position === 'L' ? 'bg-orange-100 hover:bg-orange-200' : 'bg-gray-200 hover:bg-gray-300'}`}><p className="font-bold text-gray-900">{p.displayName}</p><p className="text-sm text-gray-700">{member.position}</p></div>); })}
               </div>
             )}
           </div>
