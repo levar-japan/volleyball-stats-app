@@ -10,7 +10,7 @@ interface Match { id: string; opponent: string; matchDate: Timestamp; status: st
 interface Player { id:string; displayName: string; }
 interface RosterMember { playerId: string; position: string; }
 interface SetData { id: string; index: number; roster: RosterMember[]; liberos: string[]; status: string; score: { own: number; opponent: number; }; }
-interface Event { id: string; playerId: string | null; type: string; result: string; at: Timestamp; }
+interface Event { id: string; playerId: string | null; type: string; result: string; at: Timestamp; inPlayerId?: string; outPlayerId?: string; }
 
 export default function MatchPage() {
   const { db } = useFirebase();
@@ -216,18 +216,18 @@ export default function MatchPage() {
         {isSubModalOpen && activeSet && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4">
             <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
-              <h2 className="text-2xl font-bold mb-4">選手交代</h2>
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">選手交代</h2>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">OUT (コートから退く選手)</label>
-                  <select value={subOutPlayer} onChange={(e) => setSubOutPlayer(e.target.value)} className="w-full border border-gray-300 p-2 rounded-md">
+                  <select value={subOutPlayer} onChange={(e) => setSubOutPlayer(e.target.value)} className="w-full border border-gray-300 p-2 rounded-md text-gray-900">
                     <option value="">選択してください</option>
                     {activeSet.roster.map(member => { const player = players.find(p => p.id === member.playerId); return <option key={member.playerId} value={member.playerId}>{player?.displayName}</option> })}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">IN (コートに入る選手)</label>
-                  <select value={subInPlayer} onChange={(e) => setSubInPlayer(e.target.value)} className="w-full border border-gray-300 p-2 rounded-md">
+                  <select value={subInPlayer} onChange={(e) => setSubInPlayer(e.target.value)} className="w-full border border-gray-300 p-2 rounded-md text-gray-900">
                     <option value="">選択してください</option>
                     {benchPlayers.map(player => (<option key={player.id} value={player.id}>{player.displayName}</option>))}
                   </select>
