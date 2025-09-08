@@ -11,28 +11,18 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Vercelのビルドプロセス(サーバーサイド)でエラーにならないように、
-// クライアントサイドでのみFirebaseを初期化する
-const app = typeof window !== 'undefined' && !getApps().length
-  ? initializeApp(firebaseConfig)
-  : getApp();
+let app;
+if (typeof window !== 'undefined') {
+  app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+}
 
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// ローカルでの開発時のみ、Emulatorに接続する
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-  // ホットリロード時の二重接続を防ぐためのチェック
-  // @ts-ignore
-  if (!auth.emulatorConfig) {
-    console.log("Connecting to Auth Emulator...");
-    connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
-  }
-  // @ts-ignore
-  if (!db._settings.host.includes('localhost')) {
-    console.log("Connecting to Firestore Emulator...");
-    connectFirestoreEmulator(db, '127.0.0.1', 8080);
-  }
+  console.log("Connecting to Firebase Emulator...");
+  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  connectFirestoreEmulator(db, '127.0.0.1', 8080);
 }
 
 export { app, auth, db };
