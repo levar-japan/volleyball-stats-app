@@ -17,7 +17,6 @@ export default function MatchPage() {
   const router = useRouter();
   const pathname = usePathname();
   const matchId = pathname.split('/').pop() || '';
-
   const [match, setMatch] = useState<Match | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [sets, setSets] = useState<SetData[]>([]);
@@ -96,6 +95,7 @@ export default function MatchPage() {
       return newRoster;
     });
   };
+
   const handleLiberoSelect = (playerId: string) => {
     setSelectedLiberos(prev => {
       const s = new Set(prev);
@@ -107,6 +107,7 @@ export default function MatchPage() {
       return s;
     });
   };
+
   const handleStartSet = async () => {
     if (selectedRoster.size === 0) { alert("出場選手を1人以上選択してください。"); return; }
     if (!teamInfo?.id || !matchId) { return; }
@@ -124,18 +125,21 @@ export default function MatchPage() {
       console.error(e);
     }
   };
+
   const handleSelectPlayerForEvent = (rosterMember: RosterMember) => {
     const player = players.find(p => p.id === rosterMember.playerId);
     if (player) {
       setSelectedPlayerForEvent({ ...player, position: rosterMember.position });
     }
   };
+
   const checkSetFinished = (own: number, opp: number, isFinal: boolean) => {
     const pts = isFinal ? 15 : 25;
     if (own >= pts && own >= opp + 2) return 'own_won';
     if (opp >= pts && opp >= own + 2) return 'opponent_won';
     return null;
   };
+
   const handleRecordEvent = async (type: string, result: string, playerId: string | null = selectedPlayerForEvent?.id || null) => {
     if (!teamInfo?.id || !matchId || !activeSet) return;
     const teamId = teamInfo.id;
@@ -176,6 +180,7 @@ export default function MatchPage() {
       setSelectedPlayerForEvent(null);
     }
   };
+
   const handleEndSetManually = async () => {
     if (!activeSet || !teamInfo?.id) return;
     const teamId = teamInfo.id;
@@ -189,11 +194,13 @@ export default function MatchPage() {
       console.error(e);
     }
   };
+
   const handleGoToNextSet = () => {
     setIsSelectingForNextSet(true);
     setSelectedRoster(new Map());
     setSelectedLiberos(new Set());
   };
+
   const handleFinishMatchManually = async () => {
     if (!teamInfo?.id || !matchId) return;
     const teamId = teamInfo.id;
@@ -209,6 +216,7 @@ export default function MatchPage() {
       console.error(err);
     }
   };
+
   const handleUndoEvent = async () => {
     if (events.length === 0 || !teamInfo?.id || !activeSet) return;
     const teamId = teamInfo.id;
@@ -234,6 +242,7 @@ export default function MatchPage() {
       console.error("Undo transaction failed: ", err);
     }
   };
+
   const handleReopenSet = async (setId: string) => {
     if (!teamInfo?.id || !matchId) return;
     const teamId = teamInfo.id;
@@ -253,6 +262,7 @@ export default function MatchPage() {
       console.error(err);
     }
   };
+
   const handleEditSetRoster = (set: SetData) => {
     setEditingSet(set);
     const rosterMap = new Map<string, string>();
@@ -260,6 +270,7 @@ export default function MatchPage() {
     setSelectedRoster(rosterMap);
     setSelectedLiberos(new Set(set.liberos));
   };
+  
   const handleUpdateSetRoster = async () => {
     if (!editingSet || !teamInfo?.id) return;
     const teamId = teamInfo.id;
@@ -276,6 +287,7 @@ export default function MatchPage() {
       console.error(err);
     }
   };
+
   const handleSubstitution = async () => {
     if (!subInPlayer || !subOutPlayer || !activeSet || !teamInfo?.id) {
       alert("交代する選手を正しく選択してください。");
