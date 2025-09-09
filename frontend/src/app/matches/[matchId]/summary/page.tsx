@@ -1,37 +1,15 @@
 "use client";
-
 import { useState, useEffect, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useFirebase } from '@/app/FirebaseProvider';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query } from 'firebase/firestore';
 
 // 型定義
-interface Player {
-  id: string;
-  displayName: string;
-}
-interface Event {
-  playerId: string;
-  type: string;
-  result: string;
-  setIndex: number;
-}
-interface ActionStats {
-  success: number;
-  fail: number;
-  point: number;
-  total: number;
-  successRate: string;
-}
-interface ReceptionStats {
-  a_pass: number;
-  b_pass: number;
-  c_pass: number;
-  fail: number;
-  total: number;
-  successRate: string;
-}
+interface Player { id: string; displayName: string; }
+interface Event { playerId: string; type: string; result: string; setIndex: number; }
+interface ActionStats { success: number; fail: number; point: number; total: number; successRate: string; }
+interface ReceptionStats { a_pass: number; b_pass: number; c_pass: number; fail: number; total: number; successRate: string; }
 interface Stats {
   serve: ActionStats;
   spike: ActionStats;
@@ -41,7 +19,7 @@ interface Stats {
 }
 
 export default function SummaryPage() {
-  const { db } = useFirebase();
+  const { db, teamInfo } = useFirebase();
   const pathname = usePathname();
   const matchId = pathname.split('/')[2] || '';
 
@@ -54,20 +32,16 @@ export default function SummaryPage() {
   const [selectedSet, setSelectedSet] = useState<number | 'all'>('all');
 
   useEffect(() => {
-    if (!db || !matchId) {
+    if (!db || !matchId || !teamInfo?.id) {
       setLoading(false);
-      setError("データベースまたは試合IDが無効です。");
+      setError("データベース、試合ID、またはチーム情報が無効です。");
       return;
     }
+    const teamId = teamInfo.id;
     const fetchData = async () => {
       setLoading(true);
       setError(null);
       try {
-        const teamsQuery = query(collection(db, 'teams'), where('code4', '==', '1234'));
-        const teamSnap = await getDocs(teamsQuery);
-        if (teamSnap.empty) throw new Error("Team not found.");
-        const teamId = teamSnap.docs[0].id;
-        
         const playersSnap = await getDocs(collection(db, `teams/${teamId}/players`));
         setPlayers(playersSnap.docs.map(d => ({ ...d.data(), id: d.id } as Player)));
 
@@ -92,7 +66,7 @@ export default function SummaryPage() {
       }
     };
     fetchData();
-  }, [db, matchId]);
+  }, [db, matchId, teamInfo]);
 
   const participatingPlayers = useMemo(() => {
     const participatingPlayerIds = new Set(events.map(e => e.playerId));
@@ -146,16 +120,12 @@ export default function SummaryPage() {
     Object.values(statsByPlayer).forEach(stats => {
       const serveTotal = stats.serve.total;
       if (serveTotal > 0) stats.serve.successRate = `${(((stats.serve.point - stats.serve.fail) / serveTotal) * 100).toFixed(1)}%`;
-      
       const spikeTotal = stats.spike.total;
       if (spikeTotal > 0) stats.spike.successRate = `${(((stats.spike.point - stats.spike.fail) / spikeTotal) * 100).toFixed(1)}%`;
-      
       const blockTotal = stats.block.total;
       if (blockTotal > 0) stats.block.successRate = `${((stats.block.point / blockTotal) * 100).toFixed(1)}%`;
-
       const receptionTotal = stats.reception.total;
       if (receptionTotal > 0) stats.reception.successRate = `${(((stats.reception.a_pass + stats.reception.b_pass) / receptionTotal) * 100).toFixed(1)}%`;
-      
       const digTotal = stats.dig.success + stats.dig.fail;
       if (digTotal > 0) stats.dig.successRate = `${((stats.dig.success / digTotal) * 100).toFixed(1)}%`;
     });
@@ -221,9 +191,9 @@ export default function SummaryPage() {
                 ) : (
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">選手名</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">サーブ<br/>(得/失/総)</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">アタック<br/>(決/失/総)</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ブロック<br/>(決/失/総)</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">サーブ<br/>(得/成/失/総)</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">アタック<br/>(決/成/失/総)</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ブロック<br/>(決/成/失/総)</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">レセプション<br/>(A/B/C/失/総)</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ディグ<br/>(成/否/総)</th>
                   </tr>
@@ -246,9 +216,9 @@ export default function SummaryPage() {
                         </>
                       ) : (
                         <>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.serve.point} / {stats.serve.fail} / {stats.serve.total}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.spike.point} / {stats.spike.fail} / {stats.spike.total}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.block.point} / {stats.block.fail} / {stats.block.total}</td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.serve.point} / {stats.serve.success - stats.serve.point} / {stats.serve.fail} / {stats.serve.total}</td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.spike.point} / {stats.spike.success - stats.spike.point} / {stats.spike.fail} / {stats.spike.total}</td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.block.point} / {stats.block.success - stats.block.point} / {stats.block.fail} / {stats.block.total}</td>
                           <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.reception.a_pass}/{stats.reception.b_pass}/{stats.reception.c_pass}/{stats.reception.fail}/{stats.reception.total}</td>
                           <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.dig.success} / {stats.dig.fail} / {stats.dig.total}</td>
                         </>
