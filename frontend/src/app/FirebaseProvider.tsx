@@ -1,163 +1,91 @@
-// src/app/FirebaseProvider.tsx
 "use client";
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { Auth, User, onAuthStateChanged } from 'firebase/auth';
+import { Firestore } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
+import { usePathname, useRouter } from 'next/navigation';
 
-import { createContext, useContext, useEffect, useState } from "react";
-import { initializeApp } from "firebase/app";
-import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc,
-  serverTimestamp,
-  connectFirestoreEmulator,
-} from "firebase/firestore";
-import {
-  getAuth,
-  onAuthStateChanged,
-  signInAnonymously,
-  User,
-} from "firebase/auth";
-import { useSearchParams } from "next/navigation";
-
-// ---- Firebase 初期化 ----
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-// エミュレータ利用（任意）：.env.local に NEXT_PUBLIC_USE_EMULATOR=1
-if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_USE_EMULATOR === "1") {
-  try {
-    connectFirestoreEmulator(db, "127.0.0.1", 8080);
-    console.log("[Firebase] Firestore emulator connected");
-  } catch {}
+interface TeamInfo {
+  id: string;
+  name: string;
 }
-const auth = getAuth(app);
-
-// ---- Context 型・生成 ----
-export type TeamInfo = { id: string; name?: string }; // ← name を追加（任意プロパティ）
-type Ctx = {
-  db: ReturnType<typeof getFirestore>;
-  auth: ReturnType<typeof getAuth>;
-  authUser: User | null;
-  /** 旧API互換：user は authUser のエイリアス */
+interface FirebaseContextType {
+  auth: Auth;
+  db: Firestore;
   user: User | null;
-  /** 旧API互換：認証ロード中フラグ */
   loading: boolean;
   teamInfo: TeamInfo | null;
-  /** 旧API互換：チーム切替用 setter を公開 */
-  setTeamInfo: (t: TeamInfo | null) => void;
-};
-const Ctx = createContext<Ctx>({
-  db,
-  auth,
-  authUser: null,
-  user: null,
-  loading: true,
-  teamInfo: null,
-  setTeamInfo: () => {},
-});
+  setTeamInfo: (team: TeamInfo | null) => void;
+}
+const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined);
 
-// ---- Provider 本体 ----
 export function FirebaseProvider({ children }: { children: React.ReactNode }) {
-  const [authUser, setAuthUser] = useState<User | null>(null);
-  const [ready, setReady] = useState(false);
-  const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
-  const searchParams = useSearchParams();
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [teamInfo, setTeamInfoState] = useState<TeamInfo | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
 
-  // 1) 匿名サインイン完了まで待つ
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      if (user) {
         try {
-          await signInAnonymously(auth);
+          const storedTeam = localStorage.getItem('currentTeam');
+          if (storedTeam) {
+            setTeamInfoState(JSON.parse(storedTeam));
+          }
         } catch (e) {
-          console.error("anonymous sign-in failed", e);
+          console.error("Failed to parse team info from localStorage", e);
+          localStorage.removeItem('currentTeam');
         }
       } else {
-        setAuthUser(u);
-        setReady(true);
+        localStorage.removeItem('currentTeam');
+        setTeamInfoState(null);
       }
+      setLoading(false);
     });
-    return () => unsub();
+    return () => unsubscribe();
   }, []);
+  
+  const setTeamInfo = (team: TeamInfo | null) => {
+    if (team) {
+      localStorage.setItem('currentTeam', JSON.stringify(team));
+      setTeamInfoState(team);
+    } else {
+      localStorage.removeItem('currentTeam');
+      setTeamInfoState(null);
+    }
+  };
 
-  // 2) 認証後：teamId を解決 → members/{uid} を作成（参加登録） → teamInfo をセット
   useEffect(() => {
-    if (!ready || !authUser) return;
+    if (loading) return;
+    const isAuthPage = pathname === '/';
+    const isProtectedPage = pathname.startsWith('/dashboard') || pathname.startsWith('/matches');
+    if (user && teamInfo && isAuthPage) {
+      router.push('/dashboard');
+    }
+    if ((!user || !teamInfo) && isProtectedPage) {
+      router.push('/');
+    }
+  }, [user, loading, pathname, router, teamInfo]);
 
-    (async () => {
-      // 2-1) teamId の取得優先度：URL ?team=xxx > localStorage("teamId")
-      let teamId = searchParams?.get("team") || null;
-      if (!teamId && typeof window !== "undefined") {
-        teamId = window.localStorage.getItem("teamId");
-      }
-      if (!teamId) {
-        console.warn(
-          "[FirebaseProvider] teamId not provided. Append ?team=<TEAM_ID> or set localStorage('teamId')."
-        );
-        setTeamInfo(null);
-        return;
-      }
-
-      // 2-2) teams/{teamId} の存在確認＆name取得（ルールで get/list 許可を想定）
-      const teamRef = doc(db, `teams/${teamId}`);
-      const teamSnap = await getDoc(teamRef);
-      if (!teamSnap.exists()) {
-        console.error("[FirebaseProvider] teams/<teamId> not found:", teamId);
-        setTeamInfo(null);
-        return;
-      }
-      const teamData = teamSnap.data() as { name?: string } | undefined;
-
-      // 2-3) members/{uid} を merge で作成（初回参加登録）
-      const memberRef = doc(db, `teams/${teamId}/members/${authUser.uid}`);
-      await setDoc(
-        memberRef,
-        { joinedAt: serverTimestamp(), uid: authUser.uid },
-        { merge: true }
-      );
-
-      // 2-4) teamInfo を Context へ（name を含める）
-      setTeamInfo({ id: teamId, name: teamData?.name });
-
-      // 2-5) 保存（次回以降 URL パラメータ不要）
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("teamId", teamId);
-      }
-    })().catch((e) => {
-      console.error("[FirebaseProvider] setup team membership failed:", e);
-      setTeamInfo(null);
-    });
-  }, [ready, authUser, searchParams]);
-
-  if (!ready) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        認証初期化中...
+      <div className="flex min-h-screen items-center justify-center bg-gray-100">
+        <p>認証情報を確認中...</p>
       </div>
     );
   }
 
   return (
-    <Ctx.Provider
-      value={{
-        db,
-        auth,
-        authUser,
-        user: authUser, // 旧API互換
-        loading: !ready, // 旧API互換
-        teamInfo,
-        setTeamInfo, // 旧API互換
-      }}
-    >
+    <FirebaseContext.Provider value={{ auth, db, user, loading, teamInfo, setTeamInfo }}>
       {children}
-    </Ctx.Provider>
+    </FirebaseContext.Provider>
   );
 }
-
-// ---- Hook ----
-export const useFirebase = () => useContext(Ctx);
+export const useFirebase = () => {
+  const context = useContext(FirebaseContext);
+  if (context === undefined) throw new Error('useFirebase must be used within a FirebaseProvider');
+  return context;
+};
