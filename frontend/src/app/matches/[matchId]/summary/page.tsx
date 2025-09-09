@@ -3,19 +3,24 @@ import { useState, useEffect, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useFirebase } from '@/app/FirebaseProvider';
-import { collection, getDocs, query } from 'firebase/firestore';
+import { collection, doc, getDocs, query, onSnapshot, orderBy } from 'firebase/firestore';
 
-// 型定義
-interface Player { id: string; displayName: string; }
-interface Event { playerId: string; type: string; result: string; setIndex: number; }
-interface ActionStats { success: number; fail: number; point: number; total: number; successRate: string; }
-interface ReceptionStats { a_pass: number; b_pass: number; c_pass: number; fail: number; total: number; successRate: string; }
+// --- 型定義 ---
+interface Player {
+  id: string;
+  displayName: string;
+}
+interface Event {
+  id: string;
+  action: string;
+  result: string;
+  playerId: string;
+}
+interface Match {
+    opponent: string;
+}
 interface Stats {
-  serve: ActionStats;
-  spike: ActionStats;
-  block: ActionStats;
-  reception: ReceptionStats;
-  dig: { success: number; fail: number; total: number; successRate: string; };
+  [key: string]: any; // Allows flexible property access
 }
 
 export default function SummaryPage() {
@@ -23,212 +28,225 @@ export default function SummaryPage() {
   const pathname = usePathname();
   const matchId = pathname.split('/')[2] || '';
 
+  const [match, setMatch] = useState<Match | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
+  const [totalSets, setTotalSets] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'rate' | 'count'>('rate');
-  const [totalSets, setTotalSets] = useState(0);
-  const [selectedSet, setSelectedSet] = useState<number | 'all'>('all');
 
+  // *** MODIFIED ***: Real-time data fetching with onSnapshot
   useEffect(() => {
-    if (!db || !matchId || !teamInfo?.id) {
-      setLoading(false);
-      setError("データベース、試合ID、またはチーム情報が無効です。");
-      return;
-    }
+    if (!db || !matchId || !teamInfo?.id) return;
     const teamId = teamInfo.id;
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
+    setLoading(true);
+
+    // Fetch players once (less likely to change during a match)
+    const fetchPlayers = async () => {
       try {
         const playersSnap = await getDocs(collection(db, `teams/${teamId}/players`));
         setPlayers(playersSnap.docs.map(d => ({ ...d.data(), id: d.id } as Player)));
-
-        const setsSnap = await getDocs(collection(db, `teams/${teamId}/matches/${matchId}/sets`));
-        setTotalSets(setsSnap.size);
-        const allEvents: Event[] = [];
-        for (const setDoc of setsSnap.docs) {
-          const eventsSnap = await getDocs(collection(setDoc.ref, 'events'));
-          eventsSnap.forEach(eDoc => {
-            const eventData = eDoc.data();
-            if (eventData.playerId) {
-              allEvents.push(eventData as Event);
-            }
-          });
-        }
-        setEvents(allEvents);
-      } catch (err) { 
-        setError((err as Error).message); 
-      } 
-      finally { 
-        setLoading(false); 
+      } catch (err) {
+        console.error("Failed to fetch players:", err);
+        setError("選手データの取得に失敗しました。");
       }
     };
-    fetchData();
+    fetchPlayers();
+    
+    // Listen to match details
+    const matchUnsubscribe = onSnapshot(doc(db, `teams/${teamId}/matches/${matchId}`), (docSnap) => {
+        if (docSnap.exists()) {
+            setMatch(docSnap.data() as Match);
+        }
+    });
+
+    // Real-time listener for sets and their subsequent events
+    const setsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets`);
+    const q = query(setsRef, orderBy('setNumber', 'asc'));
+
+    const setsUnsubscribe = onSnapshot(q, async (setsSnapshot) => {
+      try {
+        setTotalSets(setsSnapshot.size);
+        const allEvents: Event[] = [];
+
+        // For each set, fetch all of its events
+        const eventPromises = setsSnapshot.docs.map(setDoc => 
+          getDocs(collection(setDoc.ref, 'events'))
+        );
+
+        const eventSnapshots = await Promise.all(eventPromises);
+
+        // Aggregate all events from all sets
+        eventSnapshots.forEach(eventsSnap => {
+          eventsSnap.forEach(eDoc => {
+            const eventData = eDoc.data();
+            if (eventData.playerId) { // Only include events tied to a player
+              allEvents.push({ id: eDoc.id, ...eventData } as Event);
+            }
+          });
+        });
+
+        setEvents(allEvents);
+        setError(null);
+      } catch (err) {
+        console.error("Failed to process sets/events:", err);
+        setError((err as Error).message);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    // Cleanup listeners on component unmount
+    return () => {
+      matchUnsubscribe();
+      setsUnsubscribe();
+    };
   }, [db, matchId, teamInfo]);
 
-  const participatingPlayers = useMemo(() => {
-    const participatingPlayerIds = new Set(events.map(e => e.playerId));
-    return players.filter(p => participatingPlayerIds.has(p.id));
+  const stats = useMemo(() => {
+    const statsMap = new Map<string, Stats>();
+    players.forEach(p => {
+      statsMap.set(p.id, {
+        serve_total: 0, serve_point: 0, serve_success: 0, serve_miss: 0,
+        spike_total: 0, spike_point: 0, spike_success: 0, spike_miss: 0,
+        block_total: 0, block_point: 0, block_success: 0, block_miss: 0,
+        reception_total: 0, reception_A: 0, reception_B: 0, reception_C: 0, reception_miss: 0,
+        dig_total: 0, dig_success: 0, dig_miss: 0,
+      });
+    });
+
+    for (const event of events) {
+      if (!event.playerId || !statsMap.has(event.playerId)) continue;
+      const playerStats = statsMap.get(event.playerId)!;
+
+      switch (event.action) {
+        case "サーブ":
+          playerStats.serve_total++;
+          if (event.result === "得点") playerStats.serve_point++;
+          if (event.result === "成功") playerStats.serve_success++;
+          if (event.result === "失点") playerStats.serve_miss++;
+          break;
+        case "スパイク":
+          playerStats.spike_total++;
+          if (event.result === "得点") playerStats.spike_point++;
+          if (event.result === "成功") playerStats.spike_success++;
+          if (event.result === "失点") playerStats.spike_miss++;
+          break;
+        case "ブロック":
+          playerStats.block_total++;
+          if (event.result === "得点") playerStats.block_point++;
+          if (event.result === "成功") playerStats.block_success++;
+          if (event.result === "失点") playerStats.block_miss++;
+          break;
+        case "レセプション":
+          playerStats.reception_total++;
+          if (event.result === "Aパス") playerStats.reception_A++;
+          if (event.result === "Bパス") playerStats.reception_B++;
+          if (event.result === "Cパス") playerStats.reception_C++;
+          if (event.result === "失点") playerStats.reception_miss++;
+          break;
+        case "ディグ":
+          playerStats.dig_total++;
+          if (event.result === "成功") playerStats.dig_success++;
+          if (event.result === "失敗") playerStats.dig_miss++;
+          break;
+      }
+    }
+
+    const finalStats: { [id: string]: Stats } = {};
+    statsMap.forEach((s, playerId) => {
+        const { serve_total, serve_point, serve_success, serve_miss } = s;
+        s.serve_success_rate = serve_total > 0 ? ((serve_point * 100 + serve_success * 50 - serve_miss * 50) / serve_total) : 0;
+        
+        const { spike_total, spike_point } = s;
+        s.spike_success_rate = spike_total > 0 ? (spike_point / spike_total) * 100 : 0;
+        
+        const { block_total, block_point } = s;
+        s.block_success_rate = block_total > 0 ? (block_point / block_total) * 100 : 0;
+        
+        const { reception_total, reception_A, reception_B } = s;
+        s.reception_success_rate = reception_total > 0 ? ((reception_A * 100 + reception_B * 50) / reception_total) : 0;
+        
+        const { dig_total, dig_success } = s;
+        s.dig_success_rate = dig_total > 0 ? (dig_success / dig_total) * 100 : 0;
+
+        finalStats[playerId] = s;
+    });
+
+    return finalStats;
   }, [events, players]);
 
-  const playerStats = useMemo(() => {
-    const filteredEvents = selectedSet === 'all'
-      ? events
-      : events.filter(event => event.setIndex === selectedSet);
-
-    const statsByPlayer: Record<string, Stats> = {};
-    participatingPlayers.forEach(p => {
-      statsByPlayer[p.id] = {
-        serve: { success: 0, fail: 0, point: 0, total: 0, successRate: '0.0%' },
-        spike: { success: 0, fail: 0, point: 0, total: 0, successRate: '0.0%' },
-        block: { success: 0, fail: 0, point: 0, total: 0, successRate: '0.0%' },
-        reception: { a_pass: 0, b_pass: 0, c_pass: 0, fail: 0, total: 0, successRate: '0.0%' },
-        dig: { success: 0, fail: 0, total: 0, successRate: '0.0%' },
-      };
-    });
-
-    filteredEvents.forEach(event => {
-      if (!statsByPlayer[event.playerId]) return;
-      const { type, result } = event;
-      const playerStat = statsByPlayer[event.playerId];
-
-      if (type === 'serve' || type === 'spike' || type === 'block') {
-        const stat = playerStat[type];
-        stat.total++;
-        if (result === 'point') { stat.point++; stat.success++; }
-        else if (result === 'success') { stat.success++; }
-        else if (result === 'fail') { stat.fail++; }
-      }
-      else if (type === 'reception') {
-        const stat = playerStat.reception;
-        stat.total++;
-        if (result === 'a-pass') stat.a_pass++;
-        else if (result === 'b-pass') stat.b_pass++;
-        else if (result === 'c-pass') stat.c_pass++;
-        else if (result === 'fail') stat.fail++;
-      }
-      else if (type === 'dig') {
-        const stat = playerStat.dig;
-        stat.total++;
-        if (result === 'success') stat.success++;
-        else if (result === 'fail') stat.fail++;
-      }
-    });
-    
-    Object.values(statsByPlayer).forEach(stats => {
-      const serveTotal = stats.serve.total;
-      if (serveTotal > 0) stats.serve.successRate = `${(((stats.serve.point - stats.serve.fail) / serveTotal) * 100).toFixed(1)}%`;
-      const spikeTotal = stats.spike.total;
-      if (spikeTotal > 0) stats.spike.successRate = `${(((stats.spike.point - stats.spike.fail) / spikeTotal) * 100).toFixed(1)}%`;
-      const blockTotal = stats.block.total;
-      if (blockTotal > 0) stats.block.successRate = `${((stats.block.point / blockTotal) * 100).toFixed(1)}%`;
-      const receptionTotal = stats.reception.total;
-      if (receptionTotal > 0) stats.reception.successRate = `${(((stats.reception.a_pass + stats.reception.b_pass) / receptionTotal) * 100).toFixed(1)}%`;
-      const digTotal = stats.dig.success + stats.dig.fail;
-      if (digTotal > 0) stats.dig.successRate = `${((stats.dig.success / digTotal) * 100).toFixed(1)}%`;
-    });
-
-    return statsByPlayer;
-  }, [events, participatingPlayers, selectedSet]);
+  const filteredPlayers = useMemo(() => {
+    return players.filter(p => stats[p.id] && events.some(e => e.playerId === p.id));
+  }, [players, stats, events]);
 
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-100"><p>集計データを読み込んでいます...</p></main>;
   if (error) return <main className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></main>;
-
+  
   return (
-    <main className="min-h-screen bg-gray-100 p-8">
-      <div className="w-full max-w-6xl mx-auto">
-        <header className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">個人成績</h1>
-          <Link href="/dashboard">
-            <span className="text-sm text-blue-600 hover:text-blue-800">&larr; ダッシュボードに戻る</span>
-          </Link>
-        </header>
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
-            <div className="flex-grow">
-              <div className="border-b border-gray-200">
-                <nav className="-mb-px flex space-x-6 overflow-x-auto">
-                  <button onClick={() => setSelectedSet('all')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${selectedSet === 'all' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                    試合全体
-                  </button>
-                  {Array.from({ length: totalSets }, (_, i) => i + 1).map(setNum => (
-                    <button key={setNum} onClick={() => setSelectedSet(setNum)} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${selectedSet === setNum ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                      第{setNum}セット
-                    </button>
-                  ))}
-                </nav>
+    <main className="min-h-screen bg-gray-100 p-4 sm:p-8">
+      <div className="w-full max-w-7xl mx-auto">
+        <header className="bg-white p-4 rounded-lg shadow-md mb-6">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">試合結果 vs {match?.opponent || '...'}</h1>
+              <p className="text-base text-gray-700 mt-1">{totalSets} セットの合計スタッツ</p>
+            </div>
+            <div className="flex items-center gap-3 mt-4 sm:mt-0">
+              <div className="flex items-center p-1 bg-gray-200 rounded-lg">
+                <button onClick={() => setViewMode('rate')} className={`px-4 py-2 text-sm font-bold rounded-md ${viewMode === 'rate' ? 'bg-white shadow' : ''}`}>率で表示</button>
+                <button onClick={() => setViewMode('count')} className={`px-4 py-2 text-sm font-bold rounded-md ${viewMode === 'count' ? 'bg-white shadow' : ''}`}>数で表示</button>
               </div>
-            </div>
-            <div className="inline-flex rounded-md shadow-sm">
-              <button
-                onClick={() => setViewMode('rate')}
-                className={`px-4 py-2 text-sm font-medium rounded-l-lg border ${viewMode === 'rate' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-              >
-                率で表示
-              </button>
-              <button
-                onClick={() => setViewMode('count')}
-                className={`px-4 py-2 text-sm font-medium rounded-r-lg border ${viewMode === 'count' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-              >
-                数で表示
-              </button>
+              <Link href={`/matches/${matchId}`}><span className="px-4 py-2 bg-blue-600 text-white text-base font-bold rounded-md hover:bg-blue-700">記録/編集</span></Link>
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                {viewMode === 'rate' ? (
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">選手名</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">サーブ<br/>効果率</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">アタック<br/>決定率</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ブロック<br/>決定率</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">レセプション<br/>成功率 (A/B)</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ディグ<br/>成功率</th>
+        </header>
+
+        <div className="overflow-x-auto bg-white rounded-lg shadow-md">
+          <table className="w-full text-sm text-left text-gray-700">
+            <thead className="text-xs text-gray-800 uppercase bg-gray-100">
+              <tr>
+                <th scope="col" className="px-4 py-3 sticky left-0 bg-gray-100 z-10">選手名</th>
+                <th scope="col" className="px-4 py-3 text-center">サーブ効果率</th>
+                <th scope="col" className="px-4 py-3 text-center">アタック決定率</th>
+                <th scope="col" className="px-4 py-3 text-center">ブロック決定率</th>
+                <th scope="col" className="px-4 py-3 text-center">レセプション成功率</th>
+                <th scope="col" className="px-4 py-3 text-center">ディグ成功率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredPlayers.length > 0 ? filteredPlayers.map(player => {
+                const s = stats[player.id];
+                return (
+                  <tr key={player.id} className="bg-white border-b hover:bg-gray-50">
+                    <th scope="row" className="px-4 py-4 font-bold text-gray-900 sticky left-0 bg-white z-10">{player.displayName}</th>
+                    <td className="px-4 py-4 text-center">
+                      {viewMode === 'rate' ? `${s.serve_success_rate.toFixed(1)}%` : `${s.serve_point}/${s.serve_success}/${s.serve_miss} (${s.serve_total})`}
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      {viewMode === 'rate' ? `${s.spike_success_rate.toFixed(1)}%` : `${s.spike_point}/${s.spike_success}/${s.spike_miss} (${s.spike_total})`}
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      {viewMode === 'rate' ? `${s.block_success_rate.toFixed(1)}%` : `${s.block_point} (${s.block_total})`}
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      {viewMode === 'rate' ? `${s.reception_success_rate.toFixed(1)}%` : `${s.reception_A}/${s.reception_B}/${s.reception_C} (${s.reception_total})`}
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      {viewMode === 'rate' ? `${s.dig_success_rate.toFixed(1)}%` : `${s.dig_success}/${s.dig_miss} (${s.dig_total})`}
+                    </td>
                   </tr>
-                ) : (
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">選手名</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">サーブ<br/>(得/成/失/総)</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">アタック<br/>(決/成/失/総)</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ブロック<br/>(決/成/失/総)</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">レセプション<br/>(A/B/C/失/総)</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ディグ<br/>(成/否/総)</th>
-                  </tr>
-                )}
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {participatingPlayers.map(player => {
-                  const stats = playerStats[player.id];
-                  if (!stats) return null;
-                  return (
-                    <tr key={player.id}>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{player.displayName}</td>
-                      {viewMode === 'rate' ? (
-                        <>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.serve.successRate}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.spike.successRate}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.block.successRate}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.reception.successRate}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.dig.successRate}</td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.serve.point} / {stats.serve.success - stats.serve.point} / {stats.serve.fail} / {stats.serve.total}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.spike.point} / {stats.spike.success - stats.spike.point} / {stats.spike.fail} / {stats.spike.total}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.block.point} / {stats.block.success - stats.block.point} / {stats.block.fail} / {stats.block.total}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.reception.a_pass}/{stats.reception.b_pass}/{stats.reception.c_pass}/{stats.reception.fail}/{stats.reception.total}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{stats.dig.success} / {stats.dig.fail} / {stats.dig.total}</td>
-                        </>
-                      )}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                );
+              }) : (
+                <tr>
+                  <td colSpan={6} className="text-center py-8 text-gray-500">
+                    記録されたプレーがありません。
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </main>
