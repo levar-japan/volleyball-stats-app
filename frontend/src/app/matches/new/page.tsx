@@ -2,41 +2,27 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { useFirebase } from '@/app/FirebaseProvider';
 import { useRouter } from 'next/navigation';
-import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import Link from 'next/link';
 
 export default function NewMatchPage() {
-  const { db, user } = useFirebase();
+  const { db, user, teamInfo } = useFirebase();
   const router = useRouter();
   const [opponent, setOpponent] = useState('');
   const [venue, setVenue] = useState('');
   const [matchDate, setMatchDate] = useState(new Date().toISOString().split('T')[0]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [teamId, setTeamId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!db) return;
-    const findTeamId = async () => {
-      const q = query(collection(db, 'teams'), where('code4', '==', '1234'));
-      const querySnapshot = await getDocs(q);
-      if (!querySnapshot.empty) {
-        setTeamId(querySnapshot.docs[0].id);
-      } else {
-        setError("所属チームが見つかりません。");
-      }
-    };
-    findTeamId();
-  }, [db]);
 
   const handleCreateMatch = async (e: FormEvent) => {
     e.preventDefault();
-    if (!opponent.trim() || !teamId || !user) {
-      setError("対戦相手は必須です。"); return;
+    if (!opponent.trim() || !teamInfo?.id || !user) {
+      setError("対戦相手は必須です。チーム情報が読み込めていない可能性もあります。");
+      return;
     }
     setLoading(true);
     try {
-      await addDoc(collection(db, `teams/${teamId}/matches`), {
+      await addDoc(collection(db, `teams/${teamInfo.id}/matches`), {
         opponent: opponent.trim(), venue: venue.trim() || null, matchDate: new Date(matchDate),
         status: 'scheduled', rules: { sets_to_win: 3, points_to_win_normal: 25, points_to_win_final: 15, deuce: true },
         createdAt: serverTimestamp(), createdBy: user.uid,
@@ -69,7 +55,7 @@ export default function NewMatchPage() {
             {error && <p className="text-red-500 text-xs italic mb-4">{error}</p>}
             <div className="flex items-center justify-between">
               <Link href="/dashboard"><span className="inline-block align-baseline font-bold text-sm text-blue-600 hover:text-blue-800">キャンセル</span></Link>
-              <button type="submit" disabled={loading || !teamId} className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:bg-gray-400">
+              <button type="submit" disabled={loading || !teamInfo?.id} className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:bg-gray-400">
                 {loading ? '作成中...' : '試合を作成'}
               </button>
             </div>
