@@ -745,24 +745,41 @@ export default function MatchPage() {
       {/* --- Modals --- */}
       {isRosterModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
-          <div className="bg-gray-200 p-8 rounded-lg shadow-xl w-full max-w-lg">
+          <div className="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-2xl">
             <h2 className="text-2xl font-bold mb-6 text-gray-900">
               {viewingSet && viewingSet.status === 'finished' ? `Set ${viewingSet.setNumber} のロスターを編集` : "スターティングメンバー選択"}
             </h2>
-            <div className="space-y-4 max-h-96 overflow-y-auto">
-              {players.map((p) => (
-                <div key={p.id} className="flex items-center justify-between border-b pb-3">
-                  <span className="text-lg text-gray-900 font-medium">{p.displayName}</span>
-                  <select
-                    value={roster.get(p.id)?.position || 'SUB'}
-                    onChange={(e) => handleRosterChange(p.id, p.displayName, e.target.value)}
-                    className="border p-2 rounded-md text-base"
-                  >
-                    <option value="SUB">控え</option>
-                    {POSITIONS.filter((pos) => pos !== 'SUB').map((pos) => (
-                      <option key={pos} value={pos}>{pos}</option>
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-4">
+              {players.map(p => (
+                <div key={p.id} className="flex flex-col sm:flex-row items-center justify-between border-b py-4">
+                  <span className="text-lg text-gray-900 font-medium mb-3 sm:mb-0">{p.displayName}</span>
+                  <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleRosterChange(p.id, p.displayName, 'SUB')}
+                      className={`px-3 py-1 text-sm font-semibold rounded-full transition-colors ${
+                        (roster.get(p.id)?.position || 'SUB') === 'SUB'
+                          ? 'bg-gray-700 text-white' // 選択中の「控え」ボタン
+                          : 'bg-transparent border border-gray-400 text-gray-600 hover:bg-gray-100' // 非選択のボタン
+                      }`}
+                    >
+                      控え
+                    </button>
+                    {POSITIONS.filter(pos => pos !== 'SUB').map(pos => (
+                      <button
+                        key={pos}
+                        type="button"
+                        onClick={() => handleRosterChange(p.id, p.displayName, pos)}
+                        className={`w-12 px-3 py-1 text-sm font-semibold rounded-full transition-colors ${
+                          roster.get(p.id)?.position === pos
+                            ? 'bg-blue-600 text-white' // 選択中のポジションボタン
+                            : 'bg-transparent border border-gray-400 text-gray-600 hover:bg-gray-100' // 非選択のボタン
+                        }`}
+                      >
+                        {pos}
+                      </button>
                     ))}
-                  </select>
+                  </div>
                 </div>
               ))}
             </div>
@@ -770,15 +787,10 @@ export default function MatchPage() {
               <button onClick={handleCloseRosterModal} className="px-6 py-3 bg-gray-200 text-gray-900 font-bold rounded-md hover:bg-gray-300">
                 キャンセル
               </button>
-              {viewingSet && viewingSet.status === 'finished' ? (
-                <button onClick={handleUpdateRoster} className="px-6 py-3 bg-purple-600 text-white font-bold rounded-md hover:bg-purple-700">
-                  ロスターを更新
-                </button>
-              ) : (
-                <button onClick={handleStartSet} className="px-6 py-3 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700">
-                  セット開始
-                </button>
-              )}
+              {viewingSet && viewingSet.status === 'finished'
+                ? <button onClick={handleUpdateRoster} className="px-6 py-3 bg-purple-600 text-white font-bold rounded-md hover:bg-purple-700">ロスターを更新</button>
+                : <button onClick={handleStartSet} className="px-6 py-3 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700">セット開始</button>
+              }
             </div>
           </div>
         </div>
