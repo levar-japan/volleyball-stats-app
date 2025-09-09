@@ -1,92 +1,49 @@
+// app/FirebaseProvider.tsx （例）
 "use client";
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Auth, User, onAuthStateChanged } from 'firebase/auth';
-import { Firestore } from 'firebase/firestore';
-// ↓ 'app' を削除
-import { auth, db } from '@/lib/firebase';
-import { usePathname, useRouter } from 'next/navigation';
+import { createContext, useContext, useEffect, useState } from "react";
+import { initializeApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
+import { getAuth, onAuthStateChanged, signInAnonymously, User } from "firebase/auth";
 
-interface TeamInfo {
-  id: string;
-  name: string;
-}
-interface FirebaseContextType {
-  auth: Auth;
-  db: Firestore;
-  user: User | null;
-  loading: boolean;
-  teamInfo: TeamInfo | null;
-  setTeamInfo: (team: TeamInfo | null) => void;
-}
-const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined);
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
+  // 省略可: storageBucket, messagingSenderId, appId
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+type Ctx = { db: ReturnType<typeof getFirestore>; authUser: User | null; teamInfo?: { id: string } | null };
+const Ctx = createContext<Ctx>({ db, authUser: null, teamInfo: null });
 
 export function FirebaseProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [teamInfo, setTeamInfoState] = useState<TeamInfo | null>(null);
-  const router = useRouter();
-  const pathname = usePathname();
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      if (user) {
-        try {
-          const storedTeam = localStorage.getItem('currentTeam');
-          if (storedTeam) {
-            setTeamInfoState(JSON.parse(storedTeam));
-          }
-        } catch (e) {
-          console.error("Failed to parse team info from localStorage", e);
-          localStorage.removeItem('currentTeam');
-        }
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (!u) {
+        try { await signInAnonymously(auth); } 
+        catch (e) { console.error("anonymous sign-in failed", e); }
       } else {
-        localStorage.removeItem('currentTeam');
-        setTeamInfoState(null);
+        setAuthUser(u);
+        setReady(true);
       }
-      setLoading(false);
     });
-    return () => unsubscribe();
+    return () => unsub();
   }, []);
-  
-  const setTeamInfo = (team: TeamInfo | null) => {
-    if (team) {
-      localStorage.setItem('currentTeam', JSON.stringify(team));
-      setTeamInfoState(team);
-    } else {
-      localStorage.removeItem('currentTeam');
-      setTeamInfoState(null);
-    }
-  };
 
-  useEffect(() => {
-    if (loading) return;
-    const isAuthPage = pathname === '/';
-    const isProtectedPage = pathname.startsWith('/dashboard') || pathname.startsWith('/matches');
-    if (user && teamInfo && isAuthPage) {
-      router.push('/dashboard');
-    }
-    if ((!user || !teamInfo) && isProtectedPage) {
-      router.push('/');
-    }
-  }, [user, loading, pathname, router, teamInfo]);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100">
-        <p>認証情報を確認中...</p>
-      </div>
-    );
+  if (!ready) {
+    return <div className="min-h-screen flex items-center justify-center">認証初期化中...</div>;
   }
 
-  return (
-    <FirebaseContext.Provider value={{ auth, db, user, loading, teamInfo, setTeamInfo }}>
-      {children}
-    </FirebaseContext.Provider>
-  );
+  // teamInfo はあなたのロジックでセット
+  const teamInfo = /* 例: Zustand/Context/URL から */ null;
+
+  return <Ctx.Provider value={{ db, authUser, teamInfo }}>{children}</Ctx.Provider>;
 }
-export const useFirebase = () => {
-  const context = useContext(FirebaseContext);
-  if (context === undefined) throw new Error('useFirebase must be used within a FirebaseProvider');
-  return context;
-};
+
+export const useFirebase = () => useContext(Ctx);
