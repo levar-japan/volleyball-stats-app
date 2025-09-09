@@ -17,6 +17,7 @@ export default function MatchPage() {
   const router = useRouter();
   const pathname = usePathname();
   const matchId = pathname.split('/').pop() || '';
+
   const [match, setMatch] = useState<Match | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [sets, setSets] = useState<SetData[]>([]);
@@ -32,6 +33,7 @@ export default function MatchPage() {
   const [isSubModalOpen, setIsSubModalOpen] = useState(false);
   const [subInPlayer, setSubInPlayer] = useState<string>('');
   const [subOutPlayer, setSubOutPlayer] = useState<string>('');
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
   useEffect(() => {
     if (!db || !matchId || !teamInfo?.id) return;
@@ -311,7 +313,33 @@ export default function MatchPage() {
       console.error(err);
     }
   };
-  
+  const handleDeleteEvent = async () => {
+    if (!editingEvent || !teamInfo?.id || !matchId || !activeSet) return;
+    if (!window.confirm("このプレー記録を削除しますか？")) return;
+    const teamId = teamInfo.id;
+    try {
+      await runTransaction(db, async (t) => {
+        const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${activeSet.id}`);
+        const setDoc = await t.get(setRef);
+        if (!setDoc.exists()) throw "Set does not exist!";
+
+        const eventRef = doc(setRef, `events/${editingEvent.id}`);
+        t.delete(eventRef);
+        
+        const score = setDoc.data().score;
+        let own = score.own;
+        let opp = score.opponent;
+        if (editingEvent.result === 'point' || editingEvent.type === 'opponent_error') own--;
+        else if (editingEvent.result === 'fail' || editingEvent.type === 'own_error') opp--;
+        
+        t.update(setRef, { score: { own, opponent: opp }, updatedAt: serverTimestamp() });
+      });
+      setEditingEvent(null);
+    } catch (err) {
+      console.error("Event deletion failed: ", err);
+    }
+  };
+
   if (loading || !match) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-100">
@@ -437,7 +465,7 @@ export default function MatchPage() {
           </div>
           <div className="p-4 border-t">
             <div className="flex justify-between items-center mb-2"><h3 className="font-semibold text-gray-800">直近のプレー</h3><button onClick={handleUndoEvent} disabled={events.length === 0} className="px-3 py-1 bg-yellow-500 text-white text-xs font-semibold rounded-md hover:bg-yellow-600 disabled:bg-gray-400">取り消し</button></div>
-            {events.length === 0 ? <p className="text-sm text-gray-700">まだ記録がありません。</p> : (<ul className="space-y-1 text-sm text-gray-800">{events.slice(0, 5).map(e => { const p = e.playerId ? players.find(p => p.id === e.playerId) : null; const playerName = p ? p.displayName : e.type === 'opponent_error' ? '相手チーム' : '自チーム'; return (<li key={e.id}>{playerName}: {e.type.includes('_error') ? 'ミス' : `${e.type} - ${e.result}`}</li>); })}</ul>)}
+            {events.length === 0 ? <p className="text-sm text-gray-700">まだ記録がありません。</p> : (<ul className="space-y-1 text-sm text-gray-800">{events.slice(0, 5).map(e => { const p = e.playerId ? players.find(p => p.id === e.playerId) : null; const playerName = p ? p.displayName : e.type === 'opponent_error' ? '相手チーム' : '自チーム'; return (<li key={e.id} onClick={() => setEditingEvent(e)} className="cursor-pointer hover:bg-gray-200 p-1 rounded">{playerName}: {e.type.includes('_error') ? 'ミス' : `${e.type} - ${e.result}`}</li>); })}</ul>)}
           </div>
         </div>
       );
@@ -507,6 +535,21 @@ export default function MatchPage() {
               <div className="mt-6 flex justify-end gap-4">
                 <button onClick={() => setIsSubModalOpen(false)} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">キャンセル</button>
                 <button onClick={handleSubstitution} className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">交代する</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {editingEvent && activeSet && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4">
+            <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+              <h2 className="text-2xl font-bold mb-4">プレー記録を編集</h2>
+              <p className="mb-2"><strong>選手:</strong> {players.find(p => p.id === editingEvent.playerId)?.displayName || 'チームプレー'}</p>
+              <p className="mb-2"><strong>プレー:</strong> {editingEvent.type}</p>
+              <p className="mb-4"><strong>結果:</strong> {editingEvent.result}</p>
+              <p className="text-xs text-gray-600 mb-4">現在、この記録の削除のみ可能です。</p>
+              <div className="mt-6 flex justify-between items-center">
+                <button onClick={handleDeleteEvent} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600">この記録を削除</button>
+                <button onClick={() => setEditingEvent(null)} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">閉じる</button>
               </div>
             </div>
           </div>
