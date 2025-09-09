@@ -53,7 +53,7 @@ const ACTIONS = {
   DIG: "ディグ",
   RECEPTION: "レセプション",
 };
-const RESULTS = {
+const RESULTS: Record<string, string[]> = {
   [ACTIONS.SERVE]: ["得点", "成功", "失点"],
   [ACTIONS.SPIKE]: ["得点", "成功", "失点"],
   [ACTIONS.BLOCK]: ["得点", "成功", "失点"],
@@ -89,8 +89,7 @@ export default function MatchPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAllEventsModalOpen, setIsAllEventsModalOpen] = useState(false);
 
-  // (この下のデータ取得・ハンドラ関数などのロジック部分は変更ありません)
-  // --- データ取得 Hooks ---
+  // --- データ取得 Hooks (変更なし) ---
   useEffect(() => {
     if (!db || !matchId || !teamInfo?.id) return;
     const teamId = teamInfo.id;
@@ -164,7 +163,7 @@ export default function MatchPage() {
     return () => unsubscribe();
   }, [activeSet, teamInfo, db, matchId]);
   
-  // --- スコア計算ロジック ---
+  // --- スコア計算ロジック (変更なし) ---
   const calculateScoreChange = (action: string, result: string) => {
     let scoreChangeOur = 0;
     let scoreChangeOpponent = 0;
@@ -185,7 +184,7 @@ export default function MatchPage() {
 
   // --- ハンドラ関数 ---
 
-  // Roster Modal
+  // Roster Modal (変更なし)
   const handleOpenRosterModal = () => setIsRosterModalOpen(true);
   const handleCloseRosterModal = () => { setRoster(new Map()); setIsRosterModalOpen(false); };
   const handleRosterChange = (playerId: string, displayName: string, position: string) => {
@@ -247,7 +246,26 @@ export default function MatchPage() {
     }
   };
   
-  // Action Modal
+  // セット終了処理 (変更なし)
+  const handleFinishSet = async () => {
+    if (!teamInfo?.id || !matchId || !activeSet) return;
+    if (!window.confirm("このセットを終了しますか？")) return;
+
+    const teamId = teamInfo.id;
+    const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${activeSet.id}`);
+
+    try {
+        await updateDoc(setRef, {
+            status: 'finished',
+            updatedAt: serverTimestamp()
+        });
+    } catch (err) {
+        console.error(err);
+        setError("セットの終了処理に失敗しました。");
+    }
+  };
+  
+  // Action Modal (変更なし)
   const handlePlayerTileClick = (player: RosterPlayer) => {
     setSelectedPlayer(player);
     setIsActionModalOpen(true);
@@ -346,7 +364,13 @@ export default function MatchPage() {
     await handleDeleteSpecificEvent(lastEvent.id, false); // 確認なしで削除
   };
 
+  // *** MODIFIED ***: この関数を修正
   const handleOpenEditModal = (event: Event) => {
+    // チームプレーは編集不可
+    if (!event.playerId) {
+      alert("チームに関するプレーは、ここから編集できません。");
+      return;
+    }
     const player = players.find(p => p.id === event.playerId);
     if (player) {
       setEditingEvent({
@@ -355,9 +379,11 @@ export default function MatchPage() {
         action: event.action,
         result: event.result
       });
+      // 編集モーダルを開き、履歴モーダルを閉じる
       setIsEditModalOpen(true);
+      setIsAllEventsModalOpen(false);
     } else {
-      setError("編集対象の選手が見つかりません。")
+      setError("編集対象の選手が見つかりません。");
     }
   };
 
@@ -473,7 +499,7 @@ export default function MatchPage() {
   const openAllEventsModal = () => setIsAllEventsModalOpen(true);
   const closeAllEventsModal = () => setIsAllEventsModalOpen(false);
 
-  // --- メモ化された計算結果 ---
+  // --- メモ化された計算結果 (変更なし) ---
   const courtPlayers = useMemo(() => activeSet?.roster.filter(p => p.position !== 'SUB') || [], [activeSet]);
   const subPlayers = useMemo(() => {
     if (!activeSet) return players;
@@ -486,7 +512,7 @@ export default function MatchPage() {
   if (error) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></div>;
   if (!match) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合が見つかりません。</p></div>;
 
-  // ---ここから下のJSX（見た目部分）を修正---
+  // --- JSX (見た目部分) は変更なし ---
   return (
     <main className="min-h-screen bg-gray-100 p-2 sm:p-8">
       <div className="w-full max-w-5xl mx-auto">
@@ -518,9 +544,10 @@ export default function MatchPage() {
                 </div>
                 <div className="text-center">
                   <p className="text-xl font-bold text-gray-800">Set {activeSet.setNumber}</p>
-                  <div className="flex gap-3 mt-2">
-                    <button onClick={openAllEventsModal} className="px-4 py-2 bg-gray-200 text-gray-900 text-base font-bold rounded-md hover:bg-gray-300">全履歴</button>
-                    <button onClick={handleUndoEvent} className="px-4 py-2 bg-yellow-600 text-white text-base font-bold rounded-md hover:bg-yellow-700">取消</button>
+                  <div className="flex flex-wrap justify-center gap-2 mt-2">
+                    <button onClick={openAllEventsModal} className="px-3 py-2 bg-gray-200 text-gray-900 text-sm font-bold rounded-md hover:bg-gray-300">全履歴</button>
+                    <button onClick={handleUndoEvent} className="px-3 py-2 bg-yellow-600 text-white text-sm font-bold rounded-md hover:bg-yellow-700">取消</button>
+                    <button onClick={handleFinishSet} className="px-3 py-2 bg-red-600 text-white text-sm font-bold rounded-md hover:bg-red-700">セット終了</button>
                   </div>
                 </div>
                 <div className="text-center">
@@ -611,7 +638,7 @@ export default function MatchPage() {
               <div>
                 <h3 className="text-xl font-semibold mb-4 text-gray-800">{selectedAction}</h3>
                 <div className="flex flex-col gap-3">
-                  {(RESULTS as Record<string, string[]>)[selectedAction!].map((result: string) => (
+                  {RESULTS[selectedAction]?.map((result: string) => (
                     <button key={result} onClick={() => handleRecordEvent(result)} className="p-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-bold text-lg">{result}</button>
                   ))}
                 </div>
@@ -637,24 +664,14 @@ export default function MatchPage() {
               </div>
               <div>
                 <label className="block text-base font-medium text-gray-700">プレー</label>
-                <select
-                  value={editingEvent.action}
-                  onChange={(e) =>
-                    setEditingEvent({
-                      ...editingEvent,
-                      action: e.target.value,
-                      result: (RESULTS as Record<string, string[]>)[e.target.value][0],
-                    })
-                  }
-                  className="w-full mt-1 border border-gray-300 p-3 rounded-md text-gray-900 text-base"
-                >
+                <select value={editingEvent.action} onChange={(e) => setEditingEvent({ ...editingEvent, action: e.target.value, result: RESULTS[e.target.value]?.[0] || "" })} className="w-full mt-1 border border-gray-300 p-3 rounded-md text-gray-900 text-base">
                   {Object.values(ACTIONS).map(a => <option key={a} value={a}>{a}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-base font-medium text-gray-700">結果</label>
                 <select value={editingEvent.result} onChange={(e) => setEditingEvent({ ...editingEvent, result: e.target.value })} className="w-full mt-1 border border-gray-300 p-3 rounded-md text-gray-900 text-base">
-                  {(RESULTS as Record<string, string[]>)[editingEvent.action].map((r: string) => <option key={r} value={r}>{r}</option>)}
+                  {RESULTS[editingEvent.action]?.map((r: string) => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
             </div>
