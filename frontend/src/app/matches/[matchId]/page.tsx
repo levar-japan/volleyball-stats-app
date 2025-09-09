@@ -745,7 +745,7 @@ export default function MatchPage() {
       {/* --- Modals --- */}
       {isRosterModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
-          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
+          <div className="bg-gray-200 p-8 rounded-lg shadow-xl w-full max-w-lg">
             <h2 className="text-2xl font-bold mb-6 text-gray-900">
               {viewingSet && viewingSet.status === 'finished' ? `Set ${viewingSet.setNumber} のロスターを編集` : "スターティングメンバー選択"}
             </h2>
