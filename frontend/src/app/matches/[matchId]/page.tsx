@@ -182,9 +182,8 @@ export default function MatchPage() {
     return { scoreChangeOur, scoreChangeOpponent };
   };
 
-  // --- ハンドラ関数 ---
-
-  // Roster Modal (変更なし)
+  // --- ハンドラ関数 (変更なし) ---
+  // Roster Modal
   const handleOpenRosterModal = () => setIsRosterModalOpen(true);
   const handleCloseRosterModal = () => { setRoster(new Map()); setIsRosterModalOpen(false); };
   const handleRosterChange = (playerId: string, displayName: string, position: string) => {
@@ -246,7 +245,7 @@ export default function MatchPage() {
     }
   };
   
-  // セット終了処理 (変更なし)
+  // セット終了処理
   const handleFinishSet = async () => {
     if (!teamInfo?.id || !matchId || !activeSet) return;
     if (!window.confirm("このセットを終了しますか？")) return;
@@ -265,7 +264,7 @@ export default function MatchPage() {
     }
   };
   
-  // Action Modal (変更なし)
+  // Action Modal
   const handlePlayerTileClick = (player: RosterPlayer) => {
     setSelectedPlayer(player);
     setIsActionModalOpen(true);
@@ -364,9 +363,7 @@ export default function MatchPage() {
     await handleDeleteSpecificEvent(lastEvent.id, false); // 確認なしで削除
   };
 
-  // *** MODIFIED ***: この関数を修正
   const handleOpenEditModal = (event: Event) => {
-    // チームプレーは編集不可
     if (!event.playerId) {
       alert("チームに関するプレーは、ここから編集できません。");
       return;
@@ -379,7 +376,6 @@ export default function MatchPage() {
         action: event.action,
         result: event.result
       });
-      // 編集モーダルを開き、履歴モーダルを閉じる
       setIsEditModalOpen(true);
       setIsAllEventsModalOpen(false);
     } else {
@@ -507,12 +503,45 @@ export default function MatchPage() {
     return players.filter(p => !onCourtIds.has(p.id));
   }, [activeSet, players]);
 
+  // *** NEW ***: ボタンのクラスを動的に決定するヘルパー関数
+  const getActionButtonClass = (action: string) => {
+    const baseClass = "p-4 rounded-md font-bold text-lg text-white shadow-md";
+    switch (action) {
+      case ACTIONS.SPIKE:
+      case ACTIONS.SERVE:
+      case ACTIONS.BLOCK:
+        return `${baseClass} bg-blue-600 hover:bg-blue-700`;
+      case ACTIONS.DIG:
+      case ACTIONS.RECEPTION:
+        return `${baseClass} bg-teal-600 hover:bg-teal-700`;
+      default:
+        return `${baseClass} bg-gray-500 hover:bg-gray-600`;
+    }
+  };
+
+  const getResultButtonClass = (result: string) => {
+    const baseClass = "p-4 rounded-md font-bold text-lg text-white shadow-md";
+    switch (result) {
+      case '得点':
+        return `${baseClass} bg-green-600 hover:bg-green-700`;
+      case '成功':
+      case 'Aパス':
+      case 'Bパス':
+        return `${baseClass} bg-sky-600 hover:bg-sky-700`;
+      case '失点':
+      case '失敗':
+      case 'Cパス':
+        return `${baseClass} bg-red-600 hover:bg-red-700`;
+      default:
+        return `${baseClass} bg-gray-500 hover:bg-gray-600`;
+    }
+  };
+  
   // --- レンダリング ---
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合データを読み込んでいます...</p></div>;
   if (error) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></div>;
   if (!match) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合が見つかりません。</p></div>;
 
-  // --- JSX (見た目部分) は変更なし ---
   return (
     <main className="min-h-screen bg-gray-100 p-2 sm:p-8">
       <div className="w-full max-w-5xl mx-auto">
@@ -623,7 +652,7 @@ export default function MatchPage() {
         </div>
       )}
 
-      {/* Action Recording Modal */}
+      {/* *** MODIFIED ***: Action Recording Modal (ボタンのクラスを動的に変更) */}
       {isActionModalOpen && selectedPlayer && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
           <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
@@ -631,7 +660,7 @@ export default function MatchPage() {
             {!selectedAction ? (
               <div className="grid grid-cols-2 gap-4">
                 {Object.values(ACTIONS).map(action => (
-                  <button key={action} onClick={() => setSelectedAction(action)} className="p-4 bg-gray-200 rounded-md hover:bg-gray-300 font-bold text-lg text-gray-900">{action}</button>
+                  <button key={action} onClick={() => setSelectedAction(action)} className={getActionButtonClass(action)}>{action}</button>
                 ))}
               </div>
             ) : (
@@ -639,7 +668,7 @@ export default function MatchPage() {
                 <h3 className="text-xl font-semibold mb-4 text-gray-800">{selectedAction}</h3>
                 <div className="flex flex-col gap-3">
                   {RESULTS[selectedAction]?.map((result: string) => (
-                    <button key={result} onClick={() => handleRecordEvent(result)} className="p-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-bold text-lg">{result}</button>
+                    <button key={result} onClick={() => handleRecordEvent(result)} className={getResultButtonClass(result)}>{result}</button>
                   ))}
                 </div>
                 <button onClick={() => setSelectedAction(null)} className="mt-6 text-sm text-gray-700 hover:underline">← プレー選択に戻る</button>
@@ -664,14 +693,24 @@ export default function MatchPage() {
               </div>
               <div>
                 <label className="block text-base font-medium text-gray-700">プレー</label>
-                <select value={editingEvent.action} onChange={(e) => setEditingEvent({ ...editingEvent, action: e.target.value, result: RESULTS[e.target.value]?.[0] || "" })} className="w-full mt-1 border border-gray-300 p-3 rounded-md text-gray-900 text-base">
+                <select
+                  value={editingEvent.action}
+                  onChange={(e) =>
+                    setEditingEvent({
+                      ...editingEvent,
+                      action: e.target.value,
+                      result: RESULTS[e.target.value as string][0],
+                    })
+                  }
+                  className="w-full mt-1 border border-gray-300 p-3 rounded-md text-gray-900 text-base"
+                >
                   {Object.values(ACTIONS).map(a => <option key={a} value={a}>{a}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-base font-medium text-gray-700">結果</label>
                 <select value={editingEvent.result} onChange={(e) => setEditingEvent({ ...editingEvent, result: e.target.value })} className="w-full mt-1 border border-gray-300 p-3 rounded-md text-gray-900 text-base">
-                  {RESULTS[editingEvent.action]?.map((r: string) => <option key={r} value={r}>{r}</option>)}
+                  {(RESULTS[editingEvent.action] as string[]).map((r: string) => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
             </div>
