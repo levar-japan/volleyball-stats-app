@@ -24,7 +24,6 @@ const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
-  // 必要なら storageBucket, messagingSenderId, appId を追加
 };
 
 const app = initializeApp(firebaseConfig);
@@ -39,7 +38,7 @@ if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_USE_EMULATOR === "1
 const auth = getAuth(app);
 
 // ---- Context 型・生成 ----
-type TeamInfo = { id: string };
+export type TeamInfo = { id: string; name?: string }; // ← name を追加（任意プロパティ）
 type Ctx = {
   db: ReturnType<typeof getFirestore>;
   auth: ReturnType<typeof getAuth>;
@@ -104,7 +103,7 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // 2-2) teams/{teamId} の存在確認（ルールで get/list 許可を想定）
+      // 2-2) teams/{teamId} の存在確認＆name取得（ルールで get/list 許可を想定）
       const teamRef = doc(db, `teams/${teamId}`);
       const teamSnap = await getDoc(teamRef);
       if (!teamSnap.exists()) {
@@ -112,6 +111,7 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
         setTeamInfo(null);
         return;
       }
+      const teamData = teamSnap.data() as { name?: string } | undefined;
 
       // 2-3) members/{uid} を merge で作成（初回参加登録）
       const memberRef = doc(db, `teams/${teamId}/members/${authUser.uid}`);
@@ -121,8 +121,8 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
         { merge: true }
       );
 
-      // 2-4) teamInfo を Context へ
-      setTeamInfo({ id: teamId });
+      // 2-4) teamInfo を Context へ（name を含める）
+      setTeamInfo({ id: teamId, name: teamData?.name });
 
       // 2-5) 保存（次回以降 URL パラメータ不要）
       if (typeof window !== "undefined") {
