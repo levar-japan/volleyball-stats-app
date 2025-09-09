@@ -6,11 +6,18 @@ import { Firestore } from 'firebase/firestore';
 import { app, auth, db } from '@/lib/firebase';
 import { usePathname, useRouter } from 'next/navigation';
 
+interface TeamInfo {
+  id: string;
+  name: string;
+}
+
 interface FirebaseContextType {
   auth: Auth;
   db: Firestore;
   user: User | null;
   loading: boolean;
+  teamInfo: TeamInfo | null;
+  setTeamInfo: (team: TeamInfo | null) => void;
 }
 
 const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined);
@@ -18,18 +25,59 @@ const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined
 export function FirebaseProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [teamInfo, setTeamInfoState] = useState<TeamInfo | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
+      if (user) {
+        // ユーザーがログインしたら、localStorageからチーム情報を復元
+        try {
+          const storedTeam = localStorage.getItem('currentTeam');
+          if (storedTeam) {
+            setTeamInfoState(JSON.parse(storedTeam));
+          }
+        } catch (e) {
+          console.error("Failed to parse team info from localStorage", e);
+          localStorage.removeItem('currentTeam');
+        }
+      } else {
+        // ログアウトしたら、localStorageとStateの両方からチーム情報を削除
+        localStorage.removeItem('currentTeam');
+        setTeamInfoState(null);
+      }
       setLoading(false);
     });
     return () => unsubscribe();
   }, []);
+  
+  const setTeamInfo = (team: TeamInfo | null) => {
+    if (team) {
+      localStorage.setItem('currentTeam', JSON.stringify(team));
+      setTeamInfoState(team);
+    } else {
+      localStorage.removeItem('currentTeam');
+      setTeamInfoState(null);
+    }
+  };
 
-  // 認証状態の読み込み中は、常にローディング画面を表示
+  useEffect(() => {
+    if (loading) return;
+    const isAuthPage = pathname === '/';
+    const isProtectedPage = pathname.startsWith('/dashboard') || pathname.startsWith('/matches');
+    
+    // ログイン済みでチーム情報があればダッシュボードへ
+    if (user && teamInfo && isAuthPage) {
+      router.push('/dashboard');
+    }
+    // 未ログインか、チーム情報がないのに保護ページにいる場合は参加ページへ
+    if ((!user || !teamInfo) && isProtectedPage) {
+      router.push('/');
+    }
+  }, [user, loading, pathname, router, teamInfo]);
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-100">
@@ -38,35 +86,8 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const isAuthPage = pathname === '/';
-  const isProtectedPage = pathname.startsWith('/dashboard') || pathname.startsWith('/matches');
-
-  // --- 新しいリダイレクトロジック ---
-  // ログイン済み なのに 参加ページ にいる場合
-  if (user && isAuthPage) {
-    router.push('/dashboard');
-    // リダイレクト中はローディング画面を表示
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100">
-        <p>ダッシュボードへ移動中...</p>
-      </div>
-    );
-  }
-
-  // 未ログイン なのに 保護されたページ にいる場合
-  if (!user && isProtectedPage) {
-    router.push('/');
-    // リダイレクト中はローディング画面を表示
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100">
-        <p>ログインページへ移動中...</p>
-      </div>
-    );
-  }
-  
-  // 上記の条件に当てはまらない場合（＝適切なページにいる場合）は、子コンポーネントを表示
   return (
-    <FirebaseContext.Provider value={{ auth, db, user, loading }}>
+    <FirebaseContext.Provider value={{ auth, db, user, loading, teamInfo, setTeamInfo }}>
       {children}
     </FirebaseContext.Provider>
   );

@@ -1,5 +1,4 @@
 "use client";
-
 import { useState, useEffect } from 'react';
 import { useFirebase } from './FirebaseProvider';
 import { useRouter } from 'next/navigation';
@@ -7,18 +6,17 @@ import { signInAnonymously } from 'firebase/auth';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
 export default function Home() {
-  const { auth, db, user, loading } = useFirebase();
+  const { auth, db, user, loading, setTeamInfo, teamInfo } = useFirebase();
   const router = useRouter();
   const [teamCode, setTeamCode] = useState('');
   const [error, setError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
 
   useEffect(() => {
-    // 認証読み込み中でなく、かつユーザーが既に存在する場合にダッシュボードへリダイレクト
-    if (!loading && user) {
+    if (!loading && user && teamInfo) {
       router.push('/dashboard');
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, teamInfo]);
 
   const handleJoinTeam = async () => {
     if (teamCode.length !== 4) {
@@ -36,17 +34,24 @@ export default function Home() {
         setIsJoining(false);
         return;
       }
-      await signInAnonymously(auth);
-      // サインイン成功後、上記のuseEffectがリダイレクトを処理します
+      
+      const teamData = querySnapshot.docs[0].data();
+      const teamId = querySnapshot.docs[0].id;
+
+      setTeamInfo({ id: teamId, name: teamData.name });
+
+      if (!user) {
+        await signInAnonymously(auth);
+      }
+      
     } catch (err) {
       console.error(err);
-      setError('チームへの参加中にエラーが発生しました。');
+      setError('参加中にエラーが発生しました。');
       setIsJoining(false);
     }
   };
 
-  // 認証読み込み中、またはログイン済みでリダイレクト待ちの間はローディング表示
-  if (loading || user) {
+  if (loading || (user && teamInfo)) {
     return (
        <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-gray-100">
         <p>読み込んでいます...</p>
