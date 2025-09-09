@@ -61,8 +61,8 @@ const RESULTS: Record<string, string[]> = {
   [ACTIONS.RECEPTION]: ["Aパス", "Bパス", "Cパス", "失点"],
 };
 const TEAM_ACTIONS = {
-  OPPONENT_ERROR: "得点（自チーム得点）",
-  OUR_ERROR: "失点（相手チーム失点）",
+  OPPONENT_ERROR: "得点",
+  OUR_ERROR: "失点",
 };
 
 export default function MatchPage() {
@@ -92,9 +92,10 @@ export default function MatchPage() {
   const [editingEvent, setEditingEvent] = useState<EditingEvent | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   
-  // *** NEW ***: State for all events history modal
+  // State for all events history modal
   const [isAllEventsModalOpen, setIsAllEventsModalOpen] = useState(false);
 
+  // (この下のデータ取得・ハンドラ関数などのロジック部分は変更ありません)
   // --- データ取得 Hooks ---
   useEffect(() => {
     if (!db || !matchId || !teamInfo?.id) return;
@@ -169,7 +170,6 @@ export default function MatchPage() {
     return () => unsubscribe();
   }, [activeSet, teamInfo, db, matchId]);
   
-
   // --- スコア計算ロジック ---
   const calculateScoreChange = (action: string, result: string) => {
     let scoreChangeOur = 0;
@@ -340,11 +340,9 @@ export default function MatchPage() {
               });
           });
       } catch (err) {
-          console.error(err);
-          setError("チームプレーの記録に失敗しました。");
+          console.error("チームプレーの記録に失敗しました。");
       }
   };
-
 
   // Edit/Undo Modal
   const handleUndoEvent = async () => {
@@ -374,7 +372,6 @@ export default function MatchPage() {
     setIsEditModalOpen(false);
   };
   
-  // *** NEW/MODIFIED ***: Function to delete any specific event and recalculate score
   const handleDeleteSpecificEvent = async (eventIdToDelete: string, shouldConfirm: boolean = true) => {
     if (!teamInfo?.id || !matchId || !activeSet) return;
     if (shouldConfirm && !window.confirm("このプレー記録を完全に削除しますか？この操作は元に戻せません。")) return;
@@ -385,11 +382,9 @@ export default function MatchPage() {
     const eventsCollectionRef = collection(setRef, 'events');
 
     try {
-      // 1. トランザクションの外で現在のイベントリストを取得
       const allEventsQuery = query(eventsCollectionRef, orderBy('createdAt', 'asc'));
       const allEventsSnap = await getDocs(allEventsQuery);
       
-      // 2. メモリ上で削除対象を除外し、スコアを再計算
       let newOurScore = 0;
       let newOpponentScore = 0;
       const eventsAfterDelete = allEventsSnap.docs.filter(doc => doc.id !== eventIdToDelete);
@@ -401,7 +396,6 @@ export default function MatchPage() {
         newOpponentScore += scoreChangeOpponent;
       });
 
-      // 3. トランザクションでアトミックに書き込み
       await runTransaction(db, async (transaction) => {
         const setDoc = await transaction.get(setRef);
         if (!setDoc.exists()) { throw "Set document does not exist!"; }
@@ -414,7 +408,6 @@ export default function MatchPage() {
         });
       });
       
-      // 削除が完了したら、開いているモーダルを閉じる
       if (isAllEventsModalOpen) closeAllEventsModal();
       if (isEditModalOpen) handleCloseEditModal();
 
@@ -424,7 +417,6 @@ export default function MatchPage() {
     }
   };
 
-  // *** NEW/MODIFIED ***: Function to update an event and recalculate score
   const handleUpdateEvent = async () => {
     if (!editingEvent || !teamInfo?.id || !matchId || !activeSet) return;
     
@@ -434,17 +426,14 @@ export default function MatchPage() {
     const eventsCollectionRef = collection(setRef, 'events');
 
     try {
-        // 1. 全イベントを取得
         const allEventsQuery = query(eventsCollectionRef, orderBy('createdAt', 'asc'));
         const allEventsSnap = await getDocs(allEventsQuery);
 
-        // 2. メモリ上でイベントリストを更新し、スコアを再計算
         let newOurScore = 0;
         let newOpponentScore = 0;
         
         allEventsSnap.docs.forEach(doc => {
             let eventData = doc.data();
-            // 更新対象のイベントであれば、モーダルで編集されたデータを使う
             if (doc.id === editingEvent.id) {
                 eventData = {
                     ...eventData,
@@ -459,7 +448,6 @@ export default function MatchPage() {
             newOpponentScore += scoreChangeOpponent;
         });
 
-        // 3. トランザクションでアトミックに書き込み
         await runTransaction(db, async (transaction) => {
             const setDoc = await transaction.get(setRef);
             if (!setDoc.exists()) { throw "Set document does not exist!"; }
@@ -488,7 +476,6 @@ export default function MatchPage() {
     }
   };
 
-  // *** NEW ***: Handlers for the all events history modal
   const openAllEventsModal = () => setIsAllEventsModalOpen(true);
   const closeAllEventsModal = () => setIsAllEventsModalOpen(false);
 
@@ -505,6 +492,7 @@ export default function MatchPage() {
   if (error) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></div>;
   if (!match) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合が見つかりません。</p></div>;
 
+  // ---ここから下のJSX（見た目部分）を修正---
   return (
     <main className="min-h-screen bg-gray-100 p-2 sm:p-8">
       <div className="w-full max-w-5xl mx-auto">
@@ -512,14 +500,14 @@ export default function MatchPage() {
         <header className="bg-white p-4 rounded-lg shadow-md mb-6">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">vs {match.opponent}</h1>
-              <p className="text-sm text-gray-600">
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">vs {match.opponent}</h1>
+              <p className="text-base text-gray-700 font-medium mt-1">
                 {sets.map(s => `${s.ourScore}-${s.opponentScore}`).join(' / ')}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <Link href={`/matches/${matchId}/summary`}><span className="px-3 py-2 bg-gray-500 text-white text-xs font-semibold rounded-md hover:bg-gray-600">集計</span></Link>
-              <Link href="/dashboard"><span className="px-3 py-2 bg-blue-500 text-white text-xs font-semibold rounded-md hover:bg-blue-600">ダッシュボード</span></Link>
+            <div className="flex items-center gap-3">
+              <Link href={`/matches/${matchId}/summary`}><span className="px-4 py-2 bg-gray-600 text-white text-sm font-semibold rounded-md hover:bg-gray-700">集計</span></Link>
+              <Link href="/dashboard"><span className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700">ダッシュボード</span></Link>
             </div>
           </div>
         </header>
@@ -531,47 +519,46 @@ export default function MatchPage() {
               {/* Scoreboard */}
               <div className="bg-white p-4 rounded-lg shadow-md flex justify-around items-center">
                 <div className="text-center">
-                  <p className="text-lg font-semibold text-gray-800">自チーム</p>
-                  <p className="text-5xl font-bold text-blue-600">{activeSet.ourScore}</p>
+                  <p className="text-xl font-bold text-gray-800">自チーム</p>
+                  <p className="text-6xl font-bold text-blue-600 tracking-tighter">{activeSet.ourScore}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-md text-gray-700">Set {activeSet.setNumber}</p>
-                  <div className="flex gap-2 mt-2">
-                    {/* *** NEW ***: "All History" button */}
-                    <button onClick={openAllEventsModal} className="px-3 py-1 bg-gray-200 text-gray-800 text-xs font-semibold rounded-md hover:bg-gray-300">全履歴</button>
-                    <button onClick={handleUndoEvent} className="px-3 py-1 bg-yellow-500 text-white text-xs font-semibold rounded-md hover:bg-yellow-600">取消</button>
+                  <p className="text-xl font-bold text-gray-800">Set {activeSet.setNumber}</p>
+                  <div className="flex gap-3 mt-2">
+                    <button onClick={openAllEventsModal} className="px-4 py-2 bg-gray-200 text-gray-800 text-sm font-semibold rounded-md hover:bg-gray-300">全履歴</button>
+                    <button onClick={handleUndoEvent} className="px-4 py-2 bg-yellow-500 text-white text-sm font-semibold rounded-md hover:bg-yellow-600">取消</button>
                   </div>
                 </div>
                 <div className="text-center">
-                  <p className="text-lg font-semibold text-gray-800">相手チーム</p>
-                  <p className="text-5xl font-bold text-red-600">{activeSet.opponentScore}</p>
+                  <p className="text-xl font-bold text-gray-800">相手チーム</p>
+                  <p className="text-6xl font-bold text-red-600 tracking-tighter">{activeSet.opponentScore}</p>
                 </div>
               </div>
 
               {/* Player Tiles */}
-              <div className="grid grid-cols-3 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-3 gap-4">
                 {courtPlayers.map(player => (
-                  <div key={player.playerId} onClick={() => handlePlayerTileClick(player)} className="bg-white p-3 rounded-lg shadow-md text-center cursor-pointer hover:bg-blue-50 transition-colors">
-                    <p className="font-bold text-lg text-gray-900">{player.displayName}</p>
-                    <p className="text-sm text-blue-700 font-semibold">{player.position}</p>
+                  <div key={player.playerId} onClick={() => handlePlayerTileClick(player)} className="bg-white p-4 rounded-lg shadow-md text-center cursor-pointer hover:bg-blue-50 transition-colors">
+                    <p className="font-bold text-xl text-gray-900">{player.displayName}</p>
+                    <p className="text-base text-blue-800 font-semibold">{player.position}</p>
                   </div>
                 ))}
               </div>
                {/* Team Actions */}
-              <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => handleRecordTeamEvent(TEAM_ACTIONS.OPPONENT_ERROR)} className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-colors">相手のミス</button>
-                  <button onClick={() => handleRecordTeamEvent(TEAM_ACTIONS.OUR_ERROR)} className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-colors">こちらのミス</button>
+              <div className="grid grid-cols-2 gap-4">
+                  <button onClick={() => handleRecordTeamEvent(TEAM_ACTIONS.OPPONENT_ERROR)} className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-4 rounded-lg shadow-md transition-colors text-lg">得点</button>
+                  <button onClick={() => handleRecordTeamEvent(TEAM_ACTIONS.OUR_ERROR)} className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 px-4 rounded-lg shadow-md transition-colors text-lg">失点</button>
               </div>
             </div>
 
             {/* Event Log */}
             <div className="bg-white p-4 rounded-lg shadow-md">
-              <h2 className="text-lg font-semibold mb-3 text-gray-800">直近のプレー</h2>
-              <ul className="space-y-2">
+              <h2 className="text-xl font-semibold mb-4 text-gray-800">直近のプレー</h2>
+              <ul className="space-y-3">
                 {events.slice(0, 10).map((event) => (
-                  <li key={event.id} onClick={() => handleOpenEditModal(event)} className="text-sm p-2 rounded-md hover:bg-gray-100 cursor-pointer border-b border-gray-200">
-                    <p className="font-semibold text-gray-900">{event.playerName}: <span className="font-normal">{event.action} - {event.result}</span></p>
-                    <p className="text-xs text-gray-500">{event.createdAt?.toDate().toLocaleTimeString()}</p>
+                  <li key={event.id} onClick={() => handleOpenEditModal(event)} className="p-3 rounded-md hover:bg-gray-100 cursor-pointer border-b border-gray-200">
+                    <p className="font-semibold text-base text-gray-800">{event.playerName}: <span className="font-medium text-gray-700">{event.action} - {event.result}</span></p>
+                    <p className="text-sm text-gray-600 mt-1">{event.createdAt?.toDate().toLocaleTimeString()}</p>
                   </li>
                 ))}
               </ul>
@@ -579,10 +566,10 @@ export default function MatchPage() {
           </div>
         ) : (
           // --- セット開始前 ---
-          <div className="text-center bg-white p-8 rounded-lg shadow-md">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">次のセットを開始</h2>
-            <p className="text-gray-600 mb-6">出場する選手とポジションを選択してください。</p>
-            <button onClick={handleOpenRosterModal} className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-colors">
+          <div className="text-center bg-white p-10 rounded-lg shadow-md">
+            <h2 className="text-3xl font-bold text-gray-800 mb-4">次のセットを開始</h2>
+            <p className="text-gray-700 mb-8 text-lg">出場する選手とポジションを選択してください。</p>
+            <button onClick={handleOpenRosterModal} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg shadow-md transition-colors text-lg">
               ロスターを選択してセット開始
             </button>
           </div>
@@ -593,23 +580,23 @@ export default function MatchPage() {
       
       {/* Roster Selection Modal */}
       {isRosterModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4">
-          <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg">
-            <h2 className="text-xl font-bold mb-4">スターティングメンバー選択</h2>
-            <div className="space-y-3 max-h-96 overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
+          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
+            <h2 className="text-2xl font-bold mb-6 text-gray-900">スターティングメンバー選択</h2>
+            <div className="space-y-4 max-h-96 overflow-y-auto">
               {players.map(p => (
-                <div key={p.id} className="flex items-center justify-between border-b pb-2">
-                  <span className="text-gray-900">{p.displayName}</span>
-                  <select onChange={(e) => handleRosterChange(p.id, p.displayName, e.target.value)} className="border border-gray-300 p-1 rounded-md text-gray-900">
+                <div key={p.id} className="flex items-center justify-between border-b pb-3">
+                  <span className="text-lg text-gray-900 font-medium">{p.displayName}</span>
+                  <select defaultValue="SUB" onChange={(e) => handleRosterChange(p.id, p.displayName, e.target.value)} className="border border-gray-300 p-2 rounded-md text-gray-900 text-base">
                     <option value="SUB">控え</option>
                     {POSITIONS.filter(pos => pos !== 'SUB').map(pos => <option key={pos} value={pos}>{pos}</option>)}
                   </select>
                 </div>
               ))}
             </div>
-            <div className="flex justify-end gap-4 mt-6">
-              <button onClick={handleCloseRosterModal} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">キャンセル</button>
-              <button onClick={handleStartSet} className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">セット開始</button>
+            <div className="flex justify-end gap-4 mt-8">
+              <button onClick={handleCloseRosterModal} className="px-6 py-3 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300">キャンセル</button>
+              <button onClick={handleStartSet} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">セット開始</button>
             </div>
           </div>
         </div>
@@ -617,90 +604,90 @@ export default function MatchPage() {
 
       {/* Action Recording Modal */}
       {isActionModalOpen && selectedPlayer && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4">
-          <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm">
-            <h2 className="text-xl font-bold mb-4">{selectedPlayer.displayName}のプレー</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
+          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+            <h2 className="text-2xl font-bold mb-6 text-gray-900">{selectedPlayer.displayName}のプレー</h2>
             {!selectedAction ? (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 {Object.values(ACTIONS).map(action => (
-                  <button key={action} onClick={() => setSelectedAction(action)} className="p-3 bg-gray-200 rounded-md hover:bg-gray-300">{action}</button>
+                  <button key={action} onClick={() => setSelectedAction(action)} className="p-4 bg-gray-200 rounded-md hover:bg-gray-300 font-semibold text-lg">{action}</button>
                 ))}
               </div>
             ) : (
               <div>
-                <h3 className="text-lg font-semibold mb-3">{selectedAction}</h3>
+                <h3 className="text-xl font-semibold mb-4 text-gray-800">{selectedAction}</h3>
                 <div className="flex flex-col gap-3">
                   {RESULTS[selectedAction]?.map((result: string) => (
-                    <button key={result} onClick={() => handleRecordEvent(result)} className="p-3 bg-blue-500 text-white rounded-md hover:bg-blue-600">{result}</button>
+                    <button key={result} onClick={() => handleRecordEvent(result)} className="p-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-semibold text-lg">{result}</button>
                   ))}
                 </div>
-                <button onClick={() => setSelectedAction(null)} className="mt-4 text-sm text-gray-600 hover:underline">← プレー選択に戻る</button>
+                <button onClick={() => setSelectedAction(null)} className="mt-6 text-sm text-gray-700 hover:underline">← プレー選択に戻る</button>
               </div>
             )}
-            <button onClick={handleCloseActionModal} className="w-full mt-6 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">閉じる</button>
+            <button onClick={handleCloseActionModal} className="w-full mt-8 px-4 py-3 bg-gray-300 text-gray-800 font-semibold rounded-md hover:bg-gray-400">閉じる</button>
           </div>
         </div>
       )}
 
       {/* Event Edit Modal */}
       {isEditModalOpen && editingEvent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4">
-          <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">プレーを編集</h2>
-            <div className="space-y-4">
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
+          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+            <h2 className="text-2xl font-bold mb-6 text-gray-900">プレーを編集</h2>
+            <div className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700">選手</label>
-                <select value={editingEvent.player.id} onChange={(e) => setEditingEvent({ ...editingEvent, player: players.find(p => p.id === e.target.value)! })} className="w-full mt-1 border border-gray-300 p-2 rounded-md text-gray-900">
+                <label className="block text-base font-medium text-gray-700">選手</label>
+                <select value={editingEvent.player.id} onChange={(e) => setEditingEvent({ ...editingEvent, player: players.find(p => p.id === e.target.value)! })} className="w-full mt-1 border border-gray-300 p-3 rounded-md text-gray-900 text-base">
                   {players.map(p => <option key={p.id} value={p.id}>{p.displayName}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">プレー</label>
-                <select value={editingEvent.action} onChange={(e) => setEditingEvent({ ...editingEvent, action: e.target.value, result: (RESULTS as Record<string, string[]>)[e.target.value][0] })} className="w-full mt-1 border border-gray-300 p-2 rounded-md text-gray-900">
+                <label className="block text-base font-medium text-gray-700">プレー</label>
+                <select value={editingEvent.action} onChange={(e) => setEditingEvent({ ...editingEvent, action: e.target.value, result: RESULTS[e.target.value][0] })} className="w-full mt-1 border border-gray-300 p-3 rounded-md text-gray-900 text-base">
                   {Object.values(ACTIONS).map(a => <option key={a} value={a}>{a}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">結果</label>
-                <select value={editingEvent.result} onChange={(e) => setEditingEvent({ ...editingEvent, result: e.target.value })} className="w-full mt-1 border border-gray-300 p-2 rounded-md text-gray-900">
-                  {(RESULTS[editingEvent.action] as string[]).map((r: string) => <option key={r} value={r}>{r}</option>)}
+                <label className="block text-base font-medium text-gray-700">結果</label>
+                <select value={editingEvent.result} onChange={(e) => setEditingEvent({ ...editingEvent, result: e.target.value })} className="w-full mt-1 border border-gray-300 p-3 rounded-md text-gray-900 text-base">
+                  {RESULTS[editingEvent.action]?.map((r: string) => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
             </div>
-            <div className="flex justify-between items-center mt-6">
-               <button onClick={() => handleDeleteSpecificEvent(editingEvent.id)} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">このプレーを削除</button>
+            <div className="flex justify-between items-center mt-8">
+               <button onClick={() => handleDeleteSpecificEvent(editingEvent.id)} className="px-5 py-3 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700">このプレーを削除</button>
               <div className="flex gap-4">
-                <button type="button" onClick={handleCloseEditModal} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">キャンセル</button>
-                <button onClick={handleUpdateEvent} className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">更新</button>
+                <button type="button" onClick={handleCloseEditModal} className="px-5 py-3 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300">キャンセル</button>
+                <button onClick={handleUpdateEvent} className="px-5 py-3 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">更新</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* *** NEW ***: All Events History Modal */}
+      {/* All Events History Modal */}
       {isAllEventsModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
           <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-gray-800">Set {activeSet?.setNumber} の全プレー履歴</h2>
-              <button onClick={closeAllEventsModal} className="text-2xl font-light text-gray-700 hover:text-black">&times;</button>
+              <h2 className="text-2xl font-bold text-gray-900">Set {activeSet?.setNumber} の全プレー履歴</h2>
+              <button onClick={closeAllEventsModal} className="text-3xl font-light text-gray-700 hover:text-black">&times;</button>
             </div>
             <div className="max-h-[70vh] overflow-y-auto">
               <ul className="divide-y divide-gray-200">
                 {events.map((event) => (
-                  <li key={event.id} className="py-3 px-2 flex justify-between items-center">
+                  <li key={event.id} className="py-4 px-2 flex justify-between items-center">
                     <div>
-                      <p className="text-sm font-semibold text-gray-900">
-                        {event.playerName}: <span className="font-normal">{event.action} - {event.result || 'N/A'}</span>
+                      <p className="text-base font-medium text-gray-800">
+                        {event.playerName}: <span className="font-normal text-gray-700">{event.action} - {event.result || 'N/A'}</span>
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-sm text-gray-600 mt-1">
                         {event.createdAt?.toDate().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                       </p>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => handleOpenEditModal(event)} className="px-3 py-1 bg-yellow-500 text-white text-xs font-semibold rounded-md hover:bg-yellow-600">編集</button>
-                      <button onClick={() => handleDeleteSpecificEvent(event.id)} className="px-3 py-1 bg-red-500 text-white text-xs font-semibold rounded-md hover:bg-red-600">削除</button>
+                      <button onClick={() => handleOpenEditModal(event)} className="px-4 py-2 bg-yellow-500 text-white text-sm font-semibold rounded-md hover:bg-yellow-600">編集</button>
+                      <button onClick={() => handleDeleteSpecificEvent(event.id)} className="px-4 py-2 bg-red-500 text-white text-sm font-semibold rounded-md hover:bg-red-600">削除</button>
                     </div>
                   </li>
                 ))}
