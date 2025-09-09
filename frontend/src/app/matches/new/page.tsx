@@ -1,5 +1,5 @@
 "use client";
-import { useState, FormEvent, useEffect } from 'react';
+import { useState, FormEvent } from 'react';
 import { useFirebase } from '@/app/FirebaseProvider';
 import { useRouter } from 'next/navigation';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -17,7 +17,7 @@ export default function NewMatchPage() {
   const handleCreateMatch = async (e: FormEvent) => {
     e.preventDefault();
     if (!opponent.trim() || !teamInfo?.id || !user) {
-      setError("対戦相手は必須です。チーム情報が読み込めていない可能性もあります。");
+      setError("対戦相手は必須です。");
       return;
     }
     setLoading(true);
