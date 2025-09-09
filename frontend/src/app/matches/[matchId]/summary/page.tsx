@@ -148,7 +148,6 @@ export default function SummaryPage() {
                 ))}
               </select>
               
-              {/* ▼▼▼ デザイン修正箇所 ▼▼▼ */}
               <div className="flex items-center p-1 bg-gray-200 rounded-lg">
                 <button 
                   onClick={() => setViewMode('rate')} 
@@ -171,9 +170,12 @@ export default function SummaryPage() {
                   数で表示
                 </button>
               </div>
-              {/* ▲▲▲ デザイン修正箇所 ▲▲▲ */}
-
+              
               <Link href={`/matches/${matchId}`}><span className="px-4 py-2 bg-blue-600 text-white text-base font-bold rounded-md hover:bg-blue-700">記録/編集</span></Link>
+              
+              {/* ▼▼▼ 修正箇所：ダッシュボードへのリンクを復元 ▼▼▼ */}
+              <Link href="/dashboard"><span className="px-4 py-2 bg-gray-600 text-white text-base font-bold rounded-md hover:bg-gray-700">ダッシュボード</span></Link>
+              {/* ▲▲▲ 修正箇所 ▲▲▲ */}
             </div>
           </div>
         </header>
