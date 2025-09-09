@@ -7,7 +7,6 @@ import { collection, doc, getDocs, query, onSnapshot, orderBy } from 'firebase/f
 
 // --- 型定義 ---
 interface Player { id: string; displayName: string; }
-// setId を追加して、どのセットのイベントかを識別できるようにする
 interface Event { id: string; action: string; result: string; playerId: string; setId: string; }
 interface Match { opponent: string; }
 interface Set { id: string; setNumber: number; }
@@ -25,7 +24,6 @@ export default function SummaryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'rate' | 'count'>('rate');
-  // 選択されたセットIDを管理するState。'all' は合計を示す
   const [selectedSetId, setSelectedSetId] = useState<string>('all');
 
   useEffect(() => {
@@ -63,7 +61,6 @@ export default function SummaryPage() {
 
         results.forEach(result => {
           result.events.forEach(eventData => {
-            // 【修正点】型アサーションを追加して 'playerId' プロパティへのアクセスを許可する
             if ((eventData as { playerId?: string }).playerId) {
               fetchedEvents.push({ ...eventData, setId: result.setId } as Event);
             }
@@ -79,7 +76,6 @@ export default function SummaryPage() {
     return () => { matchUnsubscribe(); setsUnsubscribe(); };
   }, [db, matchId, teamInfo]);
 
-  // 選択されたセットに応じて表示するイベントをフィルタリング
   const filteredEvents = useMemo(() => {
     if (selectedSetId === 'all') {
       return allEvents;
@@ -91,7 +87,6 @@ export default function SummaryPage() {
     const statsMap = new Map<string, Stats>();
     players.forEach(p => { statsMap.set(p.id, { serve_total: 0, serve_point: 0, serve_success: 0, serve_miss: 0, spike_total: 0, spike_point: 0, spike_success: 0, spike_miss: 0, block_total: 0, block_point: 0, block_success: 0, block_miss: 0, reception_total: 0, reception_A: 0, reception_B: 0, reception_C: 0, reception_miss: 0, dig_total: 0, dig_success: 0, dig_miss: 0, }); });
     
-    // allEvents の代わりに filteredEvents を使用
     for (const event of filteredEvents) {
       if (!event.playerId || !statsMap.has(event.playerId)) continue;
       const playerStats = statsMap.get(event.playerId)!;
@@ -118,11 +113,9 @@ export default function SummaryPage() {
   }, [filteredEvents, players]);
 
   const filteredPlayers = useMemo(() => {
-    // filteredEvents を使って、選択されたセットでプレーした選手のみをフィルタリング
     return players.filter(p => stats[p.id] && filteredEvents.some(e => e.playerId === p.id));
   }, [players, stats, filteredEvents]);
 
-  // ヘッダーに表示するテキストを動的に生成
   const headerText = useMemo(() => {
     if (selectedSetId === 'all') {
       return `${sets.length} セットの合計スタッツ`;
@@ -155,10 +148,31 @@ export default function SummaryPage() {
                 ))}
               </select>
               
+              {/* ▼▼▼ デザイン修正箇所 ▼▼▼ */}
               <div className="flex items-center p-1 bg-gray-200 rounded-lg">
-                <button onClick={() => setViewMode('rate')} className={`px-4 py-2 text-sm font-bold rounded-md ${viewMode === 'rate' ? 'bg-white shadow' : ''}`}>率で表示</button>
-                <button onClick={() => setViewMode('count')} className={`px-4 py-2 text-sm font-bold rounded-md ${viewMode === 'count' ? 'bg-white shadow' : ''}`}>数で表示</button>
+                <button 
+                  onClick={() => setViewMode('rate')} 
+                  className={`transition-colors duration-200 ease-in-out px-4 py-2 text-sm font-bold rounded-md ${
+                    viewMode === 'rate' 
+                      ? 'bg-white text-blue-600 shadow' 
+                      : 'bg-transparent text-gray-500 hover:bg-white/60'
+                  }`}
+                >
+                  率で表示
+                </button>
+                <button 
+                  onClick={() => setViewMode('count')} 
+                  className={`transition-colors duration-200 ease-in-out px-4 py-2 text-sm font-bold rounded-md ${
+                    viewMode === 'count' 
+                      ? 'bg-white text-blue-600 shadow' 
+                      : 'bg-transparent text-gray-500 hover:bg-white/60'
+                  }`}
+                >
+                  数で表示
+                </button>
               </div>
+              {/* ▲▲▲ デザイン修正箇所 ▲▲▲ */}
+
               <Link href={`/matches/${matchId}`}><span className="px-4 py-2 bg-blue-600 text-white text-base font-bold rounded-md hover:bg-blue-700">記録/編集</span></Link>
             </div>
           </div>
