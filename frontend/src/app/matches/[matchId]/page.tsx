@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useFirebase } from '@/app/FirebaseProvider';
 import { doc, getDoc, collection, getDocs, query, where, writeBatch, serverTimestamp, Timestamp, runTransaction, onSnapshot, updateDoc, orderBy, deleteDoc, addDoc } from 'firebase/firestore';
 
-// --- 型定義 ---
+// --- 型定義 (変更なし) ---
 interface Player {
   id: string;
   displayName: string;
@@ -44,7 +44,7 @@ interface EditingEvent {
   result: string;
 }
 
-// --- 定数定義 ---
+// --- 定数定義 (変更なし) ---
 const POSITIONS = ["S", "OH", "OP", "MB", "L", "SUB"];
 const ACTIONS = {
   SERVE: "サーブ",
@@ -53,7 +53,7 @@ const ACTIONS = {
   DIG: "ディグ",
   RECEPTION: "レセプション",
 };
-const RESULTS: Record<string, string[]> = {
+const RESULTS = {
   [ACTIONS.SERVE]: ["得点", "成功", "失点"],
   [ACTIONS.SPIKE]: ["得点", "成功", "失点"],
   [ACTIONS.BLOCK]: ["得点", "成功", "失点"],
@@ -61,8 +61,8 @@ const RESULTS: Record<string, string[]> = {
   [ACTIONS.RECEPTION]: ["Aパス", "Bパス", "Cパス", "失点"],
 };
 const TEAM_ACTIONS = {
-  OPPONENT_ERROR: "得点",
-  OUR_ERROR: "失点",
+  OPPONENT_ERROR: "自チーム得点",
+  OUR_ERROR: "自チーム失点",
 };
 
 export default function MatchPage() {
@@ -79,20 +79,14 @@ export default function MatchPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Roster Management State
+  // State (変更なし)
   const [isRosterModalOpen, setIsRosterModalOpen] = useState(false);
   const [roster, setRoster] = useState<Map<string, RosterPlayer>>(new Map());
-
-  // Event Recording State
   const [selectedPlayer, setSelectedPlayer] = useState<RosterPlayer | null>(null);
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
-
-  // Event Editing State
   const [editingEvent, setEditingEvent] = useState<EditingEvent | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  
-  // State for all events history modal
   const [isAllEventsModalOpen, setIsAllEventsModalOpen] = useState(false);
 
   // (この下のデータ取得・ハンドラ関数などのロジック部分は変更ありません)
@@ -506,8 +500,8 @@ export default function MatchPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <Link href={`/matches/${matchId}/summary`}><span className="px-4 py-2 bg-gray-600 text-white text-sm font-semibold rounded-md hover:bg-gray-700">集計</span></Link>
-              <Link href="/dashboard"><span className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700">ダッシュボード</span></Link>
+              <Link href={`/matches/${matchId}/summary`}><span className="px-4 py-2 bg-gray-600 text-white text-base font-bold rounded-md hover:bg-gray-700">集計</span></Link>
+              <Link href="/dashboard"><span className="px-4 py-2 bg-blue-600 text-white text-base font-bold rounded-md hover:bg-blue-700">ダッシュボード</span></Link>
             </div>
           </div>
         </header>
@@ -525,8 +519,8 @@ export default function MatchPage() {
                 <div className="text-center">
                   <p className="text-xl font-bold text-gray-800">Set {activeSet.setNumber}</p>
                   <div className="flex gap-3 mt-2">
-                    <button onClick={openAllEventsModal} className="px-4 py-2 bg-gray-200 text-gray-800 text-sm font-semibold rounded-md hover:bg-gray-300">全履歴</button>
-                    <button onClick={handleUndoEvent} className="px-4 py-2 bg-yellow-500 text-white text-sm font-semibold rounded-md hover:bg-yellow-600">取消</button>
+                    <button onClick={openAllEventsModal} className="px-4 py-2 bg-gray-200 text-gray-900 text-base font-bold rounded-md hover:bg-gray-300">全履歴</button>
+                    <button onClick={handleUndoEvent} className="px-4 py-2 bg-yellow-600 text-white text-base font-bold rounded-md hover:bg-yellow-700">取消</button>
                   </div>
                 </div>
                 <div className="text-center">
@@ -595,8 +589,8 @@ export default function MatchPage() {
               ))}
             </div>
             <div className="flex justify-end gap-4 mt-8">
-              <button onClick={handleCloseRosterModal} className="px-6 py-3 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300">キャンセル</button>
-              <button onClick={handleStartSet} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">セット開始</button>
+              <button onClick={handleCloseRosterModal} className="px-6 py-3 bg-gray-200 text-gray-900 font-bold rounded-md hover:bg-gray-300">キャンセル</button>
+              <button onClick={handleStartSet} className="px-6 py-3 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700">セット開始</button>
             </div>
           </div>
         </div>
@@ -610,21 +604,21 @@ export default function MatchPage() {
             {!selectedAction ? (
               <div className="grid grid-cols-2 gap-4">
                 {Object.values(ACTIONS).map(action => (
-                  <button key={action} onClick={() => setSelectedAction(action)} className="p-4 bg-gray-200 rounded-md hover:bg-gray-300 font-semibold text-lg">{action}</button>
+                  <button key={action} onClick={() => setSelectedAction(action)} className="p-4 bg-gray-200 rounded-md hover:bg-gray-300 font-bold text-lg text-gray-900">{action}</button>
                 ))}
               </div>
             ) : (
               <div>
                 <h3 className="text-xl font-semibold mb-4 text-gray-800">{selectedAction}</h3>
                 <div className="flex flex-col gap-3">
-                  {RESULTS[selectedAction]?.map((result: string) => (
-                    <button key={result} onClick={() => handleRecordEvent(result)} className="p-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-semibold text-lg">{result}</button>
+                  {(RESULTS as Record<string, string[]>)[selectedAction!].map((result: string) => (
+                    <button key={result} onClick={() => handleRecordEvent(result)} className="p-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-bold text-lg">{result}</button>
                   ))}
                 </div>
                 <button onClick={() => setSelectedAction(null)} className="mt-6 text-sm text-gray-700 hover:underline">← プレー選択に戻る</button>
               </div>
             )}
-            <button onClick={handleCloseActionModal} className="w-full mt-8 px-4 py-3 bg-gray-300 text-gray-800 font-semibold rounded-md hover:bg-gray-400">閉じる</button>
+            <button onClick={handleCloseActionModal} className="w-full mt-8 px-4 py-3 bg-gray-500 text-white font-bold rounded-md hover:bg-gray-600">閉じる</button>
           </div>
         </div>
       )}
@@ -643,22 +637,32 @@ export default function MatchPage() {
               </div>
               <div>
                 <label className="block text-base font-medium text-gray-700">プレー</label>
-                <select value={editingEvent.action} onChange={(e) => setEditingEvent({ ...editingEvent, action: e.target.value, result: RESULTS[e.target.value][0] })} className="w-full mt-1 border border-gray-300 p-3 rounded-md text-gray-900 text-base">
+                <select
+                  value={editingEvent.action}
+                  onChange={(e) =>
+                    setEditingEvent({
+                      ...editingEvent,
+                      action: e.target.value,
+                      result: (RESULTS as Record<string, string[]>)[e.target.value][0],
+                    })
+                  }
+                  className="w-full mt-1 border border-gray-300 p-3 rounded-md text-gray-900 text-base"
+                >
                   {Object.values(ACTIONS).map(a => <option key={a} value={a}>{a}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-base font-medium text-gray-700">結果</label>
                 <select value={editingEvent.result} onChange={(e) => setEditingEvent({ ...editingEvent, result: e.target.value })} className="w-full mt-1 border border-gray-300 p-3 rounded-md text-gray-900 text-base">
-                  {RESULTS[editingEvent.action]?.map((r: string) => <option key={r} value={r}>{r}</option>)}
+                  {(RESULTS as Record<string, string[]>)[editingEvent.action].map((r: string) => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
             </div>
             <div className="flex justify-between items-center mt-8">
-               <button onClick={() => handleDeleteSpecificEvent(editingEvent.id)} className="px-5 py-3 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700">このプレーを削除</button>
+               <button onClick={() => handleDeleteSpecificEvent(editingEvent.id)} className="px-5 py-3 bg-red-600 text-white font-bold rounded-md hover:bg-red-700">このプレーを削除</button>
               <div className="flex gap-4">
-                <button type="button" onClick={handleCloseEditModal} className="px-5 py-3 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300">キャンセル</button>
-                <button onClick={handleUpdateEvent} className="px-5 py-3 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">更新</button>
+                <button type="button" onClick={handleCloseEditModal} className="px-5 py-3 bg-gray-200 text-gray-900 font-bold rounded-md hover:bg-gray-300">キャンセル</button>
+                <button onClick={handleUpdateEvent} className="px-5 py-3 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700">更新</button>
               </div>
             </div>
           </div>
@@ -686,8 +690,8 @@ export default function MatchPage() {
                       </p>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => handleOpenEditModal(event)} className="px-4 py-2 bg-yellow-500 text-white text-sm font-semibold rounded-md hover:bg-yellow-600">編集</button>
-                      <button onClick={() => handleDeleteSpecificEvent(event.id)} className="px-4 py-2 bg-red-500 text-white text-sm font-semibold rounded-md hover:bg-red-600">削除</button>
+                      <button onClick={() => handleOpenEditModal(event)} className="px-4 py-2 bg-yellow-600 text-white text-sm font-bold rounded-md hover:bg-yellow-700">編集</button>
+                      <button onClick={() => handleDeleteSpecificEvent(event.id)} className="px-4 py-2 bg-red-600 text-white text-sm font-bold rounded-md hover:bg-red-700">削除</button>
                     </div>
                   </li>
                 ))}
