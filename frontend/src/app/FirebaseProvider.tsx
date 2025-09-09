@@ -1,16 +1,15 @@
 "use client";
-
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Auth, User, onAuthStateChanged } from 'firebase/auth';
 import { Firestore } from 'firebase/firestore';
-import { app, auth, db } from '@/lib/firebase';
+// ↓ 'app' を削除
+import { auth, db } from '@/lib/firebase';
 import { usePathname, useRouter } from 'next/navigation';
 
 interface TeamInfo {
   id: string;
   name: string;
 }
-
 interface FirebaseContextType {
   auth: Auth;
   db: Firestore;
@@ -19,7 +18,6 @@ interface FirebaseContextType {
   teamInfo: TeamInfo | null;
   setTeamInfo: (team: TeamInfo | null) => void;
 }
-
 const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined);
 
 export function FirebaseProvider({ children }: { children: React.ReactNode }) {
@@ -65,7 +63,6 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     if (loading) return;
     const isAuthPage = pathname === '/';
     const isProtectedPage = pathname.startsWith('/dashboard') || pathname.startsWith('/matches');
-    
     if (user && teamInfo && isAuthPage) {
       router.push('/dashboard');
     }
@@ -88,11 +85,8 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     </FirebaseContext.Provider>
   );
 }
-
 export const useFirebase = () => {
   const context = useContext(FirebaseContext);
-  if (context === undefined) {
-    throw new Error('useFirebase must be used within a FirebaseProvider');
-  }
+  if (context === undefined) throw new Error('useFirebase must be used within a FirebaseProvider');
   return context;
 };
