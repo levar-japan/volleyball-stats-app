@@ -453,12 +453,16 @@ export default function MatchPage() {
               <button onClick={handleFinishMatchManually} className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-lg text-lg">試合終了</button>
             </div>
             <div className="mt-8">
-              <h4 className="text-lg font-semibold mb-2 text-gray-800">終了したセット</h4>
+              <h4 className="text-lg font-semibold mb-2 text-gray-800">終了したセットの編集</h4>
               <ul className="space-y-2">{sets.map(set => (<li key={set.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md">
                 <span className="text-gray-800 font-medium">第{set.index}セット</span>
                 <span className={`font-bold px-3 py-1 rounded-full text-sm ${set.score.own > set.score.opponent ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                   {set.score.own} - {set.score.opponent}
                 </span>
+                <div className="flex gap-2">
+                  <button onClick={() => handleEditSetRoster(set)} className="px-3 py-1 bg-gray-500 text-white text-xs font-semibold rounded-md hover:bg-gray-600">選手</button>
+                  <button onClick={() => handleReopenSet(set.id)} className="px-3 py-1 bg-green-500 text-white text-xs font-semibold rounded-md hover:bg-green-600">記録</button>
+                </div>
               </li>))}</ul>
             </div>
           </div>
