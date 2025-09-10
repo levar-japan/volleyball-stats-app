@@ -179,15 +179,14 @@ export default function SummaryPage() {
         </header>
         <div className="overflow-x-auto bg-white rounded-lg shadow-md">
           <table className="w-full text-sm text-left text-gray-700">
-            {/* ▼▼▼ この thead ブロックが修正箇所です ▼▼▼ */}
             <thead className="text-xs text-gray-800 uppercase bg-gray-100">
               <tr>
                 <th scope="col" className="px-4 py-3 sticky left-0 bg-gray-100 z-10">選手名</th>
-                
+
                 <th scope="col" className="px-4 py-3 text-center">
                   <span className="group relative">
                     サーブ効果率
-                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2">
+                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2 pointer-events-none">
                       (得点 / 成功 / 失点 (総数))
                     </span>}
                   </span>
@@ -195,7 +194,7 @@ export default function SummaryPage() {
                 <th scope="col" className="px-4 py-3 text-center">
                    <span className="group relative">
                     アタック決定率
-                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2">
+                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2 pointer-events-none">
                       (得点 / 成功 / 失点 (総数))
                     </span>}
                   </span>
@@ -203,7 +202,7 @@ export default function SummaryPage() {
                 <th scope="col" className="px-4 py-3 text-center">
                    <span className="group relative">
                     ブロック決定率
-                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2">
+                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2 pointer-events-none">
                       (得点 / 成功 / 失点 (総数))
                     </span>}
                   </span>
@@ -211,7 +210,7 @@ export default function SummaryPage() {
                 <th scope="col" className="px-4 py-3 text-center">
                    <span className="group relative">
                     レセプション成功率
-                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2">
+                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2 pointer-events-none">
                       (Aパス / Bパス / Cパス (総数))
                     </span>}
                   </span>
@@ -219,14 +218,13 @@ export default function SummaryPage() {
                 <th scope="col" className="px-4 py-3 text-center">
                    <span className="group relative">
                     ディグ成功率
-                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2">
+                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2 pointer-events-none">
                       (成功 / 失敗 (総数))
                     </span>}
                   </span>
                 </th>
               </tr>
             </thead>
-            {/* ▲▲▲ thead ブロックの修正はここまで ▲▲▲ */}
             <tbody>
               {filteredPlayers.length > 0 ? filteredPlayers.map(player => { const s = stats[player.id]; return (<tr key={player.id} className="bg-white border-b hover:bg-gray-50"><th scope="row" className="px-4 py-4 font-bold text-gray-900 sticky left-0 bg-white z-10">{player.displayName}</th><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.serve_success_rate.toFixed(1)}%` : `${s.serve_point}/${s.serve_success}/${s.serve_miss} (${s.serve_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.spike_success_rate.toFixed(1)}%` : `${s.spike_point}/${s.spike_success}/${s.spike_miss} (${s.spike_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.block_success_rate.toFixed(1)}%` : `${s.block_point}/${s.block_success}/${s.block_miss} (${s.block_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.reception_success_rate.toFixed(1)}%` : `${s.reception_A}/${s.reception_B}/${s.reception_C} (${s.reception_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.dig_success_rate.toFixed(1)}%` : `${s.dig_success}/${s.dig_miss} (${s.dig_total})`}</td></tr>); }) : (<tr><td colSpan={6} className="text-center py-8 text-gray-500">記録されたプレーがありません。</td></tr>)}
             </tbody>

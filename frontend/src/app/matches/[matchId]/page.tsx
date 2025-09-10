@@ -712,7 +712,7 @@ export default function MatchPage() {
               <h2 className="text-xl font-semibold mb-4 text-gray-800">プレー履歴 (Set {currentSet.setNumber})</h2>
               <ul className="space-y-3">
                 {events.map(event => (
-                  <li key={event.id} onClick={() => handleOpenEditModal(event)} className="p-3 rounded-md hover:bg-gray-100 cursor-pointer border-b">
+                  <li key={event.id} className="p-3 border-b">
                     <p className="font-semibold text-base text-gray-800">
                       {event.playerName}: <span className="font-medium text-gray-700">{event.action} - {event.result || "N/A"}</span>
                     </p>
