@@ -91,11 +91,11 @@ export default function SummaryPage() {
       if (!event.playerId || !statsMap.has(event.playerId)) continue;
       const playerStats = statsMap.get(event.playerId)!;
       switch (event.action) {
-        case "サーブ": playerStats.serve_total++; if (event.result === "得点") playerStats.serve_point++; if (event.result === "成功") playerStats.serve_success++; if (event.result === "失点") playerStats.serve_miss++; break;
-        case "スパイク": playerStats.spike_total++; if (event.result === "得点") playerStats.spike_point++; if (event.result === "成功") playerStats.spike_success++; if (event.result === "失点") playerStats.spike_miss++; break;
-        case "ブロック": playerStats.block_total++; if (event.result === "得点") playerStats.block_point++; if (event.result === "成功") playerStats.block_success++; if (event.result === "失点") playerStats.block_miss++; break;
-        case "レセプション": playerStats.reception_total++; if (event.result === "Aパス") playerStats.reception_A++; if (event.result === "Bパス") playerStats.reception_B++; if (event.result === "Cパス") playerStats.reception_C++; if (event.result === "失点") playerStats.reception_miss++; break;
-        case "ディグ": playerStats.dig_total++; if (event.result === "成功") playerStats.dig_success++; if (event.result === "失敗") playerStats.dig_miss++; break;
+        case "SERVE": playerStats.serve_total++; if (event.result === "得点") playerStats.serve_point++; if (event.result === "成功") playerStats.serve_success++; if (event.result === "失点") playerStats.serve_miss++; break;
+        case "SPIKE": playerStats.spike_total++; if (event.result === "得点") playerStats.spike_point++; if (event.result === "成功") playerStats.spike_success++; if (event.result === "失点") playerStats.spike_miss++; break;
+        case "BLOCK": playerStats.block_total++; if (event.result === "得点") playerStats.block_point++; if (event.result === "成功") playerStats.block_success++; if (event.result === "失点") playerStats.block_miss++; break;
+        case "RECEPTION": playerStats.reception_total++; if (event.result === "Aパス") playerStats.reception_A++; if (event.result === "Bパス") playerStats.reception_B++; if (event.result === "Cパス") playerStats.reception_C++; if (event.result === "失点") playerStats.reception_miss++; break;
+        case "DIG": playerStats.dig_total++; if (event.result === "成功") playerStats.dig_success++; if (event.result === "失敗") playerStats.dig_miss++; break;
       }
     }
 
@@ -173,15 +173,60 @@ export default function SummaryPage() {
               
               <Link href={`/matches/${matchId}`}><span className="px-4 py-2 bg-blue-600 text-white text-base font-bold rounded-md hover:bg-blue-700">記録/編集</span></Link>
               
-              {/* ▼▼▼ 修正箇所：ダッシュボードへのリンクを復元 ▼▼▼ */}
               <Link href="/dashboard"><span className="px-4 py-2 bg-gray-600 text-white text-base font-bold rounded-md hover:bg-gray-700">ダッシュボード</span></Link>
-              {/* ▲▲▲ 修正箇所 ▲▲▲ */}
             </div>
           </div>
         </header>
         <div className="overflow-x-auto bg-white rounded-lg shadow-md">
           <table className="w-full text-sm text-left text-gray-700">
-            <thead className="text-xs text-gray-800 uppercase bg-gray-100"><tr><th scope="col" className="px-4 py-3 sticky left-0 bg-gray-100 z-10">選手名</th><th scope="col" className="px-4 py-3 text-center">サーブ効果率</th><th scope="col" className="px-4 py-3 text-center">アタック決定率</th><th scope="col" className="px-4 py-3 text-center">ブロック決定率</th><th scope="col" className="px-4 py-3 text-center">レセプション成功率</th><th scope="col" className="px-4 py-3 text-center">ディグ成功率</th></tr></thead>
+            {/* ▼▼▼ この thead ブロックが修正箇所です ▼▼▼ */}
+            <thead className="text-xs text-gray-800 uppercase bg-gray-100">
+              <tr>
+                <th scope="col" className="px-4 py-3 sticky left-0 bg-gray-100 z-10">選手名</th>
+                
+                <th scope="col" className="px-4 py-3 text-center">
+                  <span className="group relative">
+                    サーブ効果率
+                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2">
+                      (得点 / 成功 / 失点 (総数))
+                    </span>}
+                  </span>
+                </th>
+                <th scope="col" className="px-4 py-3 text-center">
+                   <span className="group relative">
+                    アタック決定率
+                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2">
+                      (得点 / 成功 / 失点 (総数))
+                    </span>}
+                  </span>
+                </th>
+                <th scope="col" className="px-4 py-3 text-center">
+                   <span className="group relative">
+                    ブロック決定率
+                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2">
+                      (得点 / 成功 / 失点 (総数))
+                    </span>}
+                  </span>
+                </th>
+                <th scope="col" className="px-4 py-3 text-center">
+                   <span className="group relative">
+                    レセプション成功率
+                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2">
+                      (Aパス / Bパス / Cパス (総数))
+                    </span>}
+                  </span>
+                </th>
+                <th scope="col" className="px-4 py-3 text-center">
+                   <span className="group relative">
+                    ディグ成功率
+                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2">
+                      (成功 / 失敗 (総数))
+                    </span>}
+                  </span>
+                </th>
+              </tr>
+            </thead>
+            {/* ▲▲▲ thead ブロックの修正はここまで ▲▲▲ */}
             <tbody>
               {filteredPlayers.length > 0 ? filteredPlayers.map(player => { const s = stats[player.id]; return (<tr key={player.id} className="bg-white border-b hover:bg-gray-50"><th scope="row" className="px-4 py-4 font-bold text-gray-900 sticky left-0 bg-white z-10">{player.displayName}</th><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.serve_success_rate.toFixed(1)}%` : `${s.serve_point}/${s.serve_success}/${s.serve_miss} (${s.serve_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.spike_success_rate.toFixed(1)}%` : `${s.spike_point}/${s.spike_success}/${s.spike_miss} (${s.spike_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.block_success_rate.toFixed(1)}%` : `${s.block_point}/${s.block_success}/${s.block_miss} (${s.block_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.reception_success_rate.toFixed(1)}%` : `${s.reception_A}/${s.reception_B}/${s.reception_C} (${s.reception_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.dig_success_rate.toFixed(1)}%` : `${s.dig_success}/${s.dig_miss} (${s.dig_total})`}</td></tr>); }) : (<tr><td colSpan={6} className="text-center py-8 text-gray-500">記録されたプレーがありません。</td></tr>)}
             </tbody>
