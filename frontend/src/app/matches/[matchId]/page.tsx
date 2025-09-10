@@ -186,6 +186,7 @@ export default function MatchPage() {
 
   /** セット一覧購読 & viewingSet 決定 */
   /** セット一覧購読 & viewingSet 決定 */
+    /** セット一覧購読 & viewingSet 決定 */
   useEffect(() => {
     if (!teamInfo?.id || !matchId) return;
     const teamId = teamInfo.id;
@@ -199,30 +200,25 @@ export default function MatchPage() {
       const ongoingSet = setsData.find(s => s.status === 'ongoing') || null;
       setActiveSet(ongoingSet);
 
-      // ▼▼▼ このブロックを変更しました ▼▼▼
-      // viewingSetの自動切り替えロジック
-      // 1. 次セット準備中は、何もしない
-      if (isPreparingNextSet) {
-        return;
+      // 準備中は viewingSet を自動更新しない
+      if (isPreparingNextSet) return;
+
+      // ▼▼▼ このブロックのロジックを修正しました ▼▼▼
+      // 初回表示時、または表示中のセットが削除された場合のみ、表示セットを自動で切り替える
+      const shouldAutoSelect = !viewingSet || !setsData.some(s => s.id === viewingSet.id);
+      if (shouldAutoSelect) {
+        // 優先順位： 1. 進行中セット, 2. 最後のセット, 3. なし
+        const nextViewingSet = ongoingSet ?? (setsData.length > 0 ? setsData[setsData.length - 1] : null);
+        setViewingSet(nextViewingSet);
       }
-      // 2. まだ何も表示されていないか、表示中のセットが削除された場合のみ自動選択
-      if (!viewingSet || !setsData.some(s => s.id === viewingSet.id)) {
-        if (ongoingSet) {
-          setViewingSet(ongoingSet);
-        } else if (setsData.length > 0) {
-          setViewingSet(setsData[setsData.length - 1]);
-        } else {
-          setViewingSet(null);
-        }
-      }
-      // ▲▲▲ このブロックを変更しました ▲▲▲
+      // ▲▲▲ このブロックのロジックを修正しました ▲▲▲
     }, (err) => {
       console.error("セット情報の取得に失敗:", err);
       setError("セット情報の取得に失敗しました。");
     });
     return () => unsubscribe();
-  // isPreparingNextSet の後ろに viewingSet を追加
-  }, [teamInfo, db, matchId, isPreparingNextSet, viewingSet]);
+  // viewingSet を依存配列から削除したままにしてください
+  }, [teamInfo, db, matchId, isPreparingNextSet]);
 
   /** イベント購読（選択中セット） */
   useEffect(() => {
