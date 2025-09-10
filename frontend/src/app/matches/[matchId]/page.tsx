@@ -38,12 +38,7 @@ interface SetDoc {
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
-type ActionType =
-  | "サーブ"
-  | "スパイク"
-  | "ブロック"
-  | "ディグ"
-  | "レセプション";
+type ActionType = "サーブ" | "スパイク" | "ブロック" | "ディグ" | "レセプション";
 interface EventDoc {
   action: ActionType | string;
   result: string;
@@ -66,15 +61,14 @@ interface Event extends EventDoc { id: string; }
 interface EditingEvent { id: string; player: Player; action: ActionType; result: string; }
 
 /** ================================
- *  Firestore Data Converter
+ *  Firestore Data Converter（ts-ignore/any不要）
  *  ================================ */
 function makeConverter<T extends object>(): FirestoreDataConverter<T> {
   return {
     toFirestore(obj: T) {
-      // Firestore書き込み時は id を除去
       const o = { ...(obj as unknown as Record<string, unknown>) };
       delete (o as Record<string, unknown>)['id'];
-      return o; // DocumentData としてOK
+      return o;
     },
     fromFirestore(snapshot: QueryDocumentSnapshot, options) {
       return snapshot.data(options) as T;
@@ -141,15 +135,13 @@ export default function MatchPage() {
   const [playerOutId, setPlayerOutId] = useState<string>('');
   const [playerInId, setPlayerInId] = useState<string>('');
 
-  // ▼ 追加：次セット準備用のフラグと、プレビュー番号
+  // 次セット準備用
   const [isPreparingNextSet, setIsPreparingNextSet] = useState(false);
   const [nextSetNumberPreview, setNextSetNumberPreview] = useState<number | null>(null);
 
   const timeFormatOptions: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
 
-  /** ================================
-   * 初期ロード（試合・選手）
-   * ================================ */
+  /** 初期ロード（試合・選手） */
   useEffect(() => {
     if (!db || !matchId || !teamInfo?.id) return;
     const teamId = teamInfo.id;
@@ -186,9 +178,7 @@ export default function MatchPage() {
     return () => { if (matchUnsubscribe) matchUnsubscribe(); };
   }, [db, matchId, teamInfo]);
 
-  /** ================================
-   * セット一覧購読 & viewingSet 決定
-   * ================================ */
+  /** セット一覧購読 & viewingSet 決定 */
   useEffect(() => {
     if (!teamInfo?.id || !matchId) return;
     const teamId = teamInfo.id;
@@ -219,9 +209,7 @@ export default function MatchPage() {
     return () => unsubscribe();
   }, [teamInfo, db, matchId, viewingSet, isPreparingNextSet]);
 
-  /** ================================
-   * イベント購読（選択中セット）
-   * ================================ */
+  /** イベント購読（選択中セット） */
   useEffect(() => {
     if (!viewingSet || !teamInfo?.id || !matchId) { setEvents([]); return; }
     const teamId = teamInfo.id;
@@ -237,9 +225,7 @@ export default function MatchPage() {
     return () => unsubscribe();
   }, [viewingSet, teamInfo, db, matchId]);
 
-  /** ================================
-   * 次セット準備（前セットロスター引き継ぎ＋番号プレビュー）
-   * ================================ */
+  /** 次セット準備（前セットロスター引き継ぎ＋番号プレビュー） */
   const handlePrepareNextSet = () => {
     const baseSet = activeSet ?? (sets.length > 0 ? sets[sets.length - 1] : null);
 
@@ -252,15 +238,13 @@ export default function MatchPage() {
     }
 
     const nextNo = Math.max(0, ...sets.map(s => s.setNumber)) + 1;
-    setNextSetNumberPreview(nextNo); // ★ 次セット番号を保存
-    setIsPreparingNextSet(true);     // ★ 準備中フラグON
-    setViewingSet(null);             // viewingSetをリセット
-    setIsRosterModalOpen(true);      // モーダルを開く
+    setNextSetNumberPreview(nextNo);
+    setIsPreparingNextSet(true);
+    setViewingSet(null);
+    setIsRosterModalOpen(true);
   };
 
-  /** ================================
-   * スコア変動ロジック
-   * ================================ */
+  /** スコア変動ロジック */
   const calculateScoreChange = (action: string, result: string) => {
     let scoreChangeOur = 0, scoreChangeOpponent = 0;
     if (action === TEAM_ACTIONS.OPPONENT_ERROR) scoreChangeOur = 1;
@@ -270,9 +254,7 @@ export default function MatchPage() {
     return { scoreChangeOur, scoreChangeOpponent };
   };
 
-  /** ================================
-   * ロスター関連
-   * ================================ */
+  /** ロスター関連 */
   const handleOpenRosterModal = (setForRoster?: Set) => {
     if (setForRoster) {
       const initialRoster = new Map<string, RosterPlayer>();
@@ -285,8 +267,8 @@ export default function MatchPage() {
   };
   const handleCloseRosterModal = () => {
     setIsRosterModalOpen(false);
-    setIsPreparingNextSet(false);      // ★ 準備解除
-    setNextSetNumberPreview(null);     // ★ 予告番号クリア
+    setIsPreparingNextSet(false);
+    setNextSetNumberPreview(null);
   };
 
   const handleRosterChange = (playerId: string, displayName: string, position: string) => {
@@ -318,9 +300,7 @@ export default function MatchPage() {
     }
   };
 
-  /** ================================
-   * セット開始（setNumber算出の堅牢化＋UX＋フラグ解除）
-   * ================================ */
+  /** セット開始（setNumber算出の堅牢化＋UX＋フラグ解除） */
   const handleStartSet = async () => {
     if (!teamInfo?.id || !matchId) return;
     if (roster.size < 1) {
@@ -334,7 +314,7 @@ export default function MatchPage() {
     const setsRef = collection(matchRef, 'sets').withConverter(setConverter);
 
     const nextSetNumber = Math.max(0, ...sets.map(s => s.setNumber)) + 1;
-    const newSetRef = doc(setsRef); // 新規ID
+    const newSetRef = doc(setsRef);
 
     try {
       await runTransaction(db, async (t) => {
@@ -364,7 +344,6 @@ export default function MatchPage() {
         roster: Array.from(roster.values()),
       } as Set);
 
-      // ★ 準備完了 → フラグと番号をクリア
       setIsPreparingNextSet(false);
       setNextSetNumberPreview(null);
 
@@ -377,6 +356,7 @@ export default function MatchPage() {
     }
   };
 
+  /** セット終了 */
   const handleFinishSet = async () => {
     if (!teamInfo?.id || !matchId || !activeSet) return;
     if (!window.confirm("このセットを終了しますか？")) return;
@@ -390,9 +370,31 @@ export default function MatchPage() {
     }
   };
 
-  /** ================================
-   * イベント記録（個人 / チーム）
-   * ================================ */
+  /** ★ 試合終了（進行中セットがあれば閉じて試合を finished に） */
+  const handleFinishMatch = async () => {
+    if (!teamInfo?.id || !matchId) return;
+    if (!window.confirm("試合を終了しますか？（進行中のセットがあれば終了します）")) return;
+
+    const teamId = teamInfo.id;
+    const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`).withConverter(matchConverter);
+    const setsRef  = collection(matchRef, 'sets').withConverter(setConverter);
+
+    try {
+      await runTransaction(db, async (t) => {
+        const qy = query(setsRef, where("status", "==", "ongoing"));
+        const ongoingSnap = await getDocs(qy);
+        ongoingSnap.docs.forEach(setDocSnap =>
+          t.update(setDocSnap.ref, { status: 'finished', updatedAt: serverTimestamp() })
+        );
+        t.update(matchRef, { status: 'finished', updatedAt: serverTimestamp() });
+      });
+    } catch (err) {
+      console.error(err);
+      setError("試合の終了処理に失敗しました。");
+    }
+  };
+
+  /** イベント記録（個人 / チーム） */
   const handlePlayerTileClick = (player: RosterPlayer) => {
     setSelectedPlayer(player);
     setIsActionModalOpen(true);
@@ -483,9 +485,7 @@ export default function MatchPage() {
     }
   };
 
-  /** ================================
-   * 取り消し / 編集 / 削除 / 更新
-   * ================================ */
+  /** 取り消し / 編集 / 削除 / 更新 */
   const handleUndoEvent = async () => {
     if (!events || events.length === 0 || !viewingSet) return;
     await handleDeleteSpecificEvent(events[0].id, false);
@@ -590,9 +590,7 @@ export default function MatchPage() {
     }
   };
 
-  /** ================================
-   * モーダル・交代
-   * ================================ */
+  /** モーダル・交代 */
   const openAllEventsModal = () => setIsAllEventsModalOpen(true);
   const closeAllEventsModal = () => setIsAllEventsModalOpen(false);
   const openSubModal = () => { setPlayerInId(''); setPlayerOutId(''); setIsSubModalOpen(true); };
@@ -625,9 +623,7 @@ export default function MatchPage() {
     }
   };
 
-  /** ================================
-   * ヘルパー
-   * ================================ */
+  /** ヘルパー */
   const subPlayers = useMemo(() => {
     if (!viewingSet) return [];
     const onCourtIds = new Set(viewingSet.roster.map(p => p.playerId));
@@ -640,9 +636,7 @@ export default function MatchPage() {
   const getResultButtonClass = (r: string) =>
     r.match(/得点/) ? "bg-green-600" : r.match(/成功|Aパス|Bパス/) ? "bg-sky-600" : "bg-red-600";
 
-  /** ================================
-   * 早期リターン
-   * ================================ */
+  /** 早期リターン */
   if (loading)
     return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合データを読み込んでいます...</p></div>;
   if (error)
@@ -650,9 +644,7 @@ export default function MatchPage() {
   if (!match)
     return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合が見つかりません。</p></div>;
 
-  /** ================================
-   * JSX
-   * ================================ */
+  /** JSX */
   return (
     <main className="min-h-screen bg-gray-100 p-2 sm:p-8">
       <div className="w-full max-w-5xl mx-auto">
@@ -670,6 +662,14 @@ export default function MatchPage() {
               )}
             </div>
             <div className="flex items-center gap-3">
+              {match.status !== 'finished' && (
+                <button
+                  onClick={handleFinishMatch}
+                  className="px-4 py-2 bg-red-600 text-white text-base font-bold rounded-md hover:bg-red-700"
+                >
+                  試合終了
+                </button>
+              )}
               <Link href={`/matches/${matchId}/summary`}>
                 <span className="px-4 py-2 bg-gray-600 text-white text-base font-bold rounded-md hover:bg-gray-700">集計</span>
               </Link>
@@ -692,7 +692,7 @@ export default function MatchPage() {
               Set {s.setNumber} {s.status === 'ongoing' ? ' (記録中)' : ''}
             </button>
           ))}
-          {!activeSet && (
+          {!activeSet && match.status !== 'finished' && (
             <button
               onClick={handlePrepareNextSet}
               className="px-4 py-2 rounded-md font-bold text-sm bg-green-500 text-white hover:bg-green-600 whitespace-nowrap"
@@ -718,7 +718,16 @@ export default function MatchPage() {
                       <button onClick={handleUndoEvent} className="px-3 py-2 bg-yellow-600 text-white text-sm font-bold rounded-md hover:bg-yellow-700">取消</button>
                       <button onClick={openSubModal} className="px-3 py-2 bg-green-600 text-white text-sm font-bold rounded-md hover:bg-green-700">選手交代</button>
                       <button onClick={handleFinishSet} className="px-3 py-2 bg-red-600 text-white text-sm font-bold rounded-md hover:bg-red-700">セット終了</button>
+                      <button onClick={handleFinishMatch} className="px-3 py-2 bg-red-700 text-white text-sm font-bold rounded-md hover:bg-red-800">試合終了</button>
                     </>}
+                    {viewingSet.status === 'finished' && match.status !== 'finished' && (
+                      <button
+                        onClick={handleFinishMatch}
+                        className="px-3 py-2 bg-red-600 text-white text-sm font-bold rounded-md hover:bg-red-700"
+                      >
+                        試合終了
+                      </button>
+                    )}
                     {viewingSet.status === 'finished' && (
                       <button
                         onClick={() => handleOpenRosterModal(viewingSet)}
@@ -812,7 +821,7 @@ export default function MatchPage() {
       {isRosterModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
           <div className="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-2xl">
-            {/* ▼ モーダルのヘッダーに “次のセット番号” を表示 */}
+            {/* モーダルのヘッダーに “次のセット番号” を表示 */}
             <h2 className="text-2xl font-bold mb-2 text-gray-900">
               {isPreparingNextSet
                 ? `Set ${nextSetNumberPreview ?? (Math.max(0, ...sets.map(s => s.setNumber)) + 1)} のスターティングメンバー選択`
