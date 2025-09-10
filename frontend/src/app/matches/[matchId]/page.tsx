@@ -743,44 +743,27 @@ export default function MatchPage() {
                 </div>
               </div>
 
-              {viewingSet.status === 'ongoing' ? (
-                <>
-                  <div className="grid grid-cols-3 sm:grid-cols-3 gap-4">
-                    {viewingSet.roster
-                      .filter(p => p.position !== 'SUB')
-                      .map(player => (
-                        <div
-                          key={player.playerId}
-                          onClick={() => handlePlayerTileClick(player)}
-                          className="bg-white p-4 rounded-lg shadow-md text-center cursor-pointer hover:bg-blue-50"
-                        >
-                          <p className="font-bold text-xl text-gray-900">{player.displayName}</p>
-                          <p className="text-base text-blue-800 font-semibold">{player.position}</p>
-                        </div>
-                      ))}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <button
-                      onClick={() => handleRecordTeamEvent(TEAM_ACTIONS.OPPONENT_ERROR)}
-                      className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-lg shadow-md text-lg"
-                    >
-                      相手のミス
-                    </button>
-                    <button
-                      onClick={() => handleRecordTeamEvent(TEAM_ACTIONS.OUR_ERROR)}
-                      className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-lg shadow-md text-lg"
-                    >
-                      こちらのミス
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div className="bg-white p-4 rounded-lg shadow-md">
-                  <h3 className="text-xl font-bold text-center text-gray-800 mb-2">このセットは終了しました</h3>
-                  <p className="text-center text-gray-600">プレーを編集するには「全履歴」から操作してください。</p>
-                </div>
-              )}
+                      {/* ▼▼▼ このブロック全体を変更 ▼▼▼ */}
+        <>
+          {viewingSet.status !== 'ongoing' && (
+            <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 mb-4 rounded-r-lg" role="alert">
+              <p className="font-bold">編集モード</p>
+              <p>このセットは終了していますが、プレーの追加・修正が可能です。</p>
+            </div>
+          )}
+          <div className="grid grid-cols-3 sm:grid-cols-3 gap-4">
+            {viewingSet.roster.filter(p => p.position !== 'SUB').map(player => (
+              <div key={player.playerId} onClick={() => handlePlayerTileClick(player)} className="bg-white p-4 rounded-lg shadow-md text-center cursor-pointer hover:bg-blue-50">
+                <p className="font-bold text-xl text-gray-900">{player.displayName}</p>
+                <p className="text-base text-blue-800 font-semibold">{player.position}</p>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <button onClick={() => handleRecordTeamEvent(TEAM_ACTIONS.OPPONENT_ERROR)} className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-lg shadow-md text-lg">相手のミス</button>
+            <button onClick={() => handleRecordTeamEvent(TEAM_ACTIONS.OUR_ERROR)} className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-lg shadow-md text-lg">こちらのミス</button>
+          </div>
+        </>
             </div>
 
             <div className="bg-white p-4 rounded-lg shadow-md">
