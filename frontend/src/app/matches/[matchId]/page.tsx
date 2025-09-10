@@ -187,11 +187,14 @@ export default function MatchPage() {
   /** セット一覧購読 & viewingSet 決定 */
   /** セット一覧購読 & viewingSet 決定 */
     /** セット一覧購読 & viewingSet 決定 */
+    /** セット一覧購読 & viewingSet 決定 */
   useEffect(() => {
     if (!teamInfo?.id || !matchId) return;
     const teamId = teamInfo.id;
     const setsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets`).withConverter(setConverter);
     const qy = query(setsRef, orderBy('setNumber', 'asc'));
+
+    let isInitialLoad = true; // 初回読み込みフラグ
 
     const unsubscribe = onSnapshot(qy, (snapshot) => {
       const setsData = snapshot.docs.map(d => withId(d)) as Set[];
@@ -200,25 +203,25 @@ export default function MatchPage() {
       const ongoingSet = setsData.find(s => s.status === 'ongoing') || null;
       setActiveSet(ongoingSet);
 
-      // 準備中は viewingSet を自動更新しない
-      if (isPreparingNextSet) return;
-
-      // ▼▼▼ このブロックのロジックを修正しました ▼▼▼
-      // 初回表示時、または表示中のセットが削除された場合のみ、表示セットを自動で切り替える
-      const shouldAutoSelect = !viewingSet || !setsData.some(s => s.id === viewingSet.id);
-      if (shouldAutoSelect) {
-        // 優先順位： 1. 進行中セット, 2. 最後のセット, 3. なし
-        const nextViewingSet = ongoingSet ?? (setsData.length > 0 ? setsData[setsData.length - 1] : null);
-        setViewingSet(nextViewingSet);
+      // ▼▼▼ このブロックのロジックを完全に書き換えました ▼▼▼
+      if (isInitialLoad) {
+        isInitialLoad = false; // フラグを倒す
+        const initialSet = ongoingSet ?? (setsData.length > 0 ? setsData[setsData.length - 1] : null);
+        setViewingSet(initialSet);
+      } else {
+        // 2回目以降の更新時：表示中のセットが消えた場合のみフォールバック
+        if (viewingSet && !setsData.some(s => s.id === viewingSet.id)) {
+          const fallbackSet = ongoingSet ?? (setsData.length > 0 ? setsData[setsData.length - 1] : null);
+          setViewingSet(fallbackSet);
+        }
       }
-      // ▲▲▲ このブロックのロジックを修正しました ▲▲▲
+      // ▲▲▲ このブロックのロジックを完全に書き換えました ▲▲▲
     }, (err) => {
       console.error("セット情報の取得に失敗:", err);
       setError("セット情報の取得に失敗しました。");
     });
     return () => unsubscribe();
-  // viewingSet を依存配列から削除したままにしてください
-  }, [teamInfo, db, matchId, isPreparingNextSet]);
+  }, [teamInfo, db, matchId]); // <--- viewingSet と isPreparingNextSet を削除NextSet]);
 
   /** イベント購読（選択中セット） */
   useEffect(() => {
