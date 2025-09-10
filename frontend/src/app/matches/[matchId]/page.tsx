@@ -720,20 +720,17 @@ export default function MatchPage() {
                   <p className="text-xl font-bold text-gray-800">Set {viewingSet.setNumber}</p>
                   <div className="flex flex-wrap justify-center gap-2 mt-2">
                     <button onClick={openAllEventsModal} className="px-3 py-2 bg-gray-200 text-gray-900 text-sm font-bold rounded-md hover:bg-gray-300">全履歴</button>
-                    {viewingSet.status === 'ongoing' && (
+                    {viewingSet.status === 'ongoing' ? (
                       <>
                         <button onClick={handleUndoEvent} className="px-3 py-2 bg-yellow-600 text-white text-sm font-bold rounded-md hover:bg-yellow-700">取消</button>
                         <button onClick={openSubModal} className="px-3 py-2 bg-green-600 text-white text-sm font-bold rounded-md hover:bg-green-700">選手交代</button>
                         <button onClick={handleFinishSet} className="px-3 py-2 bg-red-600 text-white text-sm font-bold rounded-md hover:bg-red-700">セット終了</button>
                       </>
-                    )}
-                    {viewingSet.status === 'finished' && (
-                      <button
-                        onClick={() => handleOpenRosterModal(viewingSet)}
-                        className="px-3 py-2 bg-purple-600 text-white text-sm font-bold rounded-md hover:bg-purple-700"
-                      >
-                        ロスター編集
-                      </button>
+                    ) : (
+                      <>
+                        <button onClick={openSubModal} className="px-3 py-2 bg-green-600 text-white text-sm font-bold rounded-md hover:bg-green-700">選手交代</button>
+                        <button onClick={() => handleOpenRosterModal(viewingSet)} className="px-3 py-2 bg-purple-600 text-white text-sm font-bold rounded-md hover:bg-purple-700">ロスター編集</button>
+                      </>
                     )}
                   </div>
                 </div>
