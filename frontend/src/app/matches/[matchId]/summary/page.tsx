@@ -102,12 +102,23 @@ export default function SummaryPage() {
 
     const finalStats: { [id: string]: Stats } = {};
     statsMap.forEach((s, playerId) => {
-        const { serve_total, serve_point, serve_success, serve_miss } = s; 
+        const { serve_total, serve_point, serve_success, serve_miss } = s;
         s.serve_success_rate = serve_total > 0 ? ((serve_point * 100 + serve_success * 25 - serve_miss * 25) / serve_total) : 0;
-        const { spike_total, spike_point } = s; s.spike_success_rate = spike_total > 0 ? (spike_point / spike_total) * 100 : 0;
-        const { block_total, block_point } = s; s.block_success_rate = block_total > 0 ? (block_point / block_total) * 100 : 0;
-        const { reception_total, reception_A, reception_B } = s; s.reception_success_rate = reception_total > 0 ? ((reception_A * 100 + reception_B * 50) / reception_total) : 0;
-        const { dig_total, dig_success } = s; s.dig_success_rate = dig_total > 0 ? (dig_success / dig_total) * 100 : 0;
+        
+        // ▼▼▼ このブロックが修正箇所です ▼▼▼
+        const { spike_total, spike_point, spike_miss } = s;
+        s.spike_effectiveness_rate = spike_total > 0 ? ((spike_point - spike_miss) / spike_total) * 100 : 0;
+        
+        const { block_total, block_point, block_miss } = s;
+        s.block_effectiveness_rate = block_total > 0 ? ((block_point - block_miss) / block_total) * 100 : 0;
+        // ▲▲▲ 修正ここまで ▲▲▲
+
+        const { reception_total, reception_A, reception_B } = s;
+        s.reception_success_rate = reception_total > 0 ? ((reception_A * 100 + reception_B * 50) / reception_total) : 0;
+        
+        const { dig_total, dig_success } = s;
+        s.dig_success_rate = dig_total > 0 ? (dig_success / dig_total) * 100 : 0;
+
         finalStats[playerId] = s;
     });
     return finalStats;
@@ -173,7 +184,6 @@ export default function SummaryPage() {
               </div>
               
               <Link href={`/matches/${matchId}`}><span className="px-4 py-2 bg-blue-600 text-white text-base font-bold rounded-md hover:bg-blue-700">記録/編集</span></Link>
-              
               <Link href="/dashboard"><span className="px-4 py-2 bg-gray-600 text-white text-base font-bold rounded-md hover:bg-gray-700">ダッシュボード</span></Link>
             </div>
           </div>
@@ -188,11 +198,11 @@ export default function SummaryPage() {
                   {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(得点/成功/失点 (総数))</span>}
                 </th>
                 <th scope="col" className="px-4 py-3 text-center">
-                  アタック決定率
+                  アタック効果率
                   {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(得点/成功/失点 (総数))</span>}
                 </th>
                 <th scope="col" className="px-4 py-3 text-center">
-                  ブロック決定率
+                  ブロック効果率
                   {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(得点/成功/失点 (総数))</span>}
                 </th>
                 <th scope="col" className="px-4 py-3 text-center">
@@ -209,7 +219,7 @@ export default function SummaryPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredPlayers.length > 0 ? filteredPlayers.map(player => { const s = stats[player.id]; return (<tr key={player.id} className="bg-white border-b hover:bg-gray-50"><th scope="row" className="px-4 py-4 font-bold text-gray-900 sticky left-0 bg-white z-10">{player.displayName}</th><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.serve_success_rate.toFixed(1)}%` : `${s.serve_point}/${s.serve_success}/${s.serve_miss} (${s.serve_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.spike_success_rate.toFixed(1)}%` : `${s.spike_point}/${s.spike_success}/${s.spike_miss} (${s.spike_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.block_success_rate.toFixed(1)}%` : `${s.block_point}/${s.block_success}/${s.block_miss} (${s.block_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.reception_success_rate.toFixed(1)}%` : `${s.reception_A}/${s.reception_B}/${s.reception_C} (${s.reception_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.dig_success_rate.toFixed(1)}%` : `${s.dig_success}/${s.dig_miss} (${s.dig_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'count' ? s.toss_miss_total : '-'}</td></tr>); }) : (<tr><td colSpan={7} className="text-center py-8 text-gray-500">記録されたプレーがありません。</td></tr>)}
+              {filteredPlayers.length > 0 ? filteredPlayers.map(player => { const s = stats[player.id]; return (<tr key={player.id} className="bg-white border-b hover:bg-gray-50"><th scope="row" className="px-4 py-4 font-bold text-gray-900 sticky left-0 bg-white z-10">{player.displayName}</th><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.serve_success_rate.toFixed(1)}%` : `${s.serve_point}/${s.serve_success}/${s.serve_miss} (${s.serve_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.spike_effectiveness_rate.toFixed(1)}%` : `${s.spike_point}/${s.spike_success}/${s.spike_miss} (${s.spike_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.block_effectiveness_rate.toFixed(1)}%` : `${s.block_point}/${s.block_success}/${s.block_miss} (${s.block_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.reception_success_rate.toFixed(1)}%` : `${s.reception_A}/${s.reception_B}/${s.reception_C} (${s.reception_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.dig_success_rate.toFixed(1)}%` : `${s.dig_success}/${s.dig_miss} (${s.dig_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'count' ? s.toss_miss_total : '-'}</td></tr>); }) : (<tr><td colSpan={7} className="text-center py-8 text-gray-500">記録されたプレーがありません。</td></tr>)}
             </tbody>
           </table>
         </div>

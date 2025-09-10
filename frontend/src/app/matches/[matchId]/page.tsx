@@ -514,26 +514,34 @@ export default function MatchPage() {
       setError("プレーの削除に失敗しました。");
     }
   };
+
+  // ▼▼▼ この関数が修正箇所です ▼▼▼
   const handleUpdateEvent = async () => {
     if (!db || !teamId || !matchId || !currentSet || !editingEvent) return;
+
+    // 日本語のaction（例: "スパイク"）を英語キー（例: "SPIKE"）に変換
+    const actionToRecord = Object.keys(ACTIONS).find(key => ACTIONS[key as keyof typeof ACTIONS] === editingEvent.action) || 'UNKNOWN';
+
     const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`).withConverter(setConverter);
     const eventsRef = collection(setRef, "events").withConverter(eventConverter);
     const eventRef = doc(eventsRef, editingEvent.id);
+
     try {
       await runTransaction(db, async (t) => {
         const all = await getDocs(query(eventsRef, orderBy("createdAt", "asc")));
         const { our, opp } = recomputeScores(all.docs, undefined, {
-          id: editingEvent.id, action: editingEvent.action, result: editingEvent.result,
+          id: editingEvent.id, action: actionToRecord, result: editingEvent.result,
         });
         t.update(eventRef, {
           playerId: editingEvent.player.id,
           playerName: editingEvent.player.displayName,
-          action: editingEvent.action,
+          action: actionToRecord, // 英語キーで更新
           result: editingEvent.result,
           updatedAt: serverTimestamp(),
         });
         t.update(setRef, { ourScore: our, opponentScore: opp, updatedAt: serverTimestamp() });
       });
+
       handleCloseEditModal();
     } catch (e) {
       console.error(e);
@@ -731,11 +739,7 @@ export default function MatchPage() {
             <h2 className="text-2xl font-bold mb-6 text-gray-900">{selectedPlayer.displayName}のプレー</h2>
             {!selectedAction ? (
               <div className="grid grid-cols-2 gap-4">
-                {(
-                  selectedPlayer.position === 'L' 
-                    ? Object.values(ACTIONS).filter(a => a === 'レセプション' || a === 'ディグ')
-                    : Object.values(ACTIONS).filter(a => a !== 'トスミス')
-                ).map(a => (
+                {(selectedPlayer.position === 'L' ? Object.values(ACTIONS).filter(a => a === 'レセプション' || a === 'ディグ') : Object.values(ACTIONS).filter(a => a !== 'トスミス')).map(a => (
                   <button key={a} onClick={() => setSelectedAction(a as ActionType)} className={`p-4 rounded-md font-bold text-lg text-white shadow-md ${getActionButtonClass(a as ActionType)}`}>{a}</button>
                 ))}
                 {selectedPlayer.position === 'S' && (
