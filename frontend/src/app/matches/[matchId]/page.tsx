@@ -21,7 +21,7 @@ import {
 } from "firebase/firestore";
 
 /** ================================
- *  Firestoreドキュメント用の型
+ *  Firestoreドキュメント用の型（idは持たせない）
  *  ================================ */
 type ActionStatus = "scheduled" | "ongoing" | "finished";
 type SetStatus = "pending" | "ongoing" | "finished";
@@ -56,7 +56,7 @@ interface EventDoc {
 }
 
 /** ================================
- *  UI用の型（id付き）
+ *  UI用の型（idを含む）
  *  ================================ */
 interface Player extends PlayerDoc { id: string; }
 interface Match  extends MatchDoc  { id: string; }
@@ -147,10 +147,10 @@ export default function MatchPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeSet, setActiveSet] = useState<Set | null>(null);
 
-  // 重要：オブジェクトではなくIDだけ保持
+  // ▼▼▼ 修正の核心1：表示中のセットはIDのみをStateで管理 ▼▼▼
   const [viewingSetId, setViewingSetId] = useState<string | null>(null);
 
-  // 表示中セットは sets（購読の最新）から導出
+  // ▼▼▼ 修正の核心2：表示用のセットオブジェクトは、最新のsetsとIDから導出する ▼▼▼
   const currentSet = useMemo(
     () => (viewingSetId ? sets.find(s => s.id === viewingSetId) ?? null : null),
     [sets, viewingSetId]
@@ -215,11 +215,13 @@ export default function MatchPage() {
         const ongoing = list.find(s => s.status === "ongoing") ?? null;
         setActiveSet(ongoing);
 
+        // ▼▼▼ 修正の核心3：このロジックで自動切り替えを制御 ▼▼▼
         if (isInitial) {
           isInitial = false;
           const initial = ongoing ?? (list.length ? list[list.length - 1] : null);
           setViewingSetId(initial?.id ?? null);
         } else if (viewingSetId && !list.some(s => s.id === viewingSetId)) {
+          // 表示していたセットが削除された場合のみフォールバック
           const fallback = ongoing ?? (list.length ? list[list.length - 1] : null);
           setViewingSetId(fallback?.id ?? null);
         }
@@ -228,11 +230,12 @@ export default function MatchPage() {
     );
 
     return () => { unsets(); };
-  }, [db, teamId, matchId, viewingSetId]);
+  }, [db, teamId, matchId]); // 依存配列から viewingSetId を削除
 
   /** イベント購読（表示中セットのidだけに依存） */
   useEffect(() => {
-    if (!db || !teamId || !matchId || !currentSet) { setEvents([]); return; }
+    // currentSet?.id を使うことで、オブジェクトの参照ではなくIDの変更にのみ反応する
+    if (!db || !teamId || !matchId || !currentSet?.id) { setEvents([]); return; }
 
     const eventsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}/events`).withConverter(eventConverter);
     const qy = query(eventsRef, orderBy("createdAt", "desc"));
@@ -245,6 +248,10 @@ export default function MatchPage() {
 
     return () => { unevents(); };
   }, [db, teamId, matchId, currentSet?.id]);
+
+
+  // ( ... 以降の関数の内容は変更ありません ... )
+
 
   /** スコア差分計算 */
   const calculateScoreChange = (action: string, result: string) => {
@@ -296,11 +303,11 @@ export default function MatchPage() {
     const nextNo = Math.max(0, ...sets.map(s => s.setNumber)) + 1;
     setNextSetNumberPreview(nextNo);
     setIsPreparingNextSet(true);
-    setViewingSetId(null);            // 重要：idだけクリア
+    setViewingSetId(null);
     setIsRosterModalOpen(true);
   };
 
-  /** セット開始（idのみ更新し、オブジェクトは購読で反映） */
+  /** セット開始 */
   const handleStartSet = async () => {
     if (!db || !teamId || !matchId) return;
     if (roster.size < 1) { alert("少なくとも1人の選手をポジションに設定してください。"); return; }
@@ -312,6 +319,9 @@ export default function MatchPage() {
 
     try {
       await runTransaction(db, async (t) => {
+        const matchDoc = await t.get(matchRef);
+        if (!matchDoc.exists()) throw "Match document not found!";
+
         const qy = query(setsRef, where("status", "==", "ongoing"));
         const os = await getDocs(qy);
         os.docs.forEach(d => t.update(d.ref, { status: "finished", updatedAt: serverTimestamp() }));
@@ -325,10 +335,12 @@ export default function MatchPage() {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
-        t.update(matchRef, { status: "ongoing", updatedAt: serverTimestamp() });
+        
+        if (matchDoc.data()?.status !== 'finished') {
+          t.update(matchRef, { status: "ongoing", updatedAt: serverTimestamp() });
+        }
       });
 
-      // ここは「idだけ」更新（中身は購読で入る）
       setViewingSetId(newSetRef.id);
       setIsPreparingNextSet(false);
       setNextSetNumberPreview(null);
