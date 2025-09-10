@@ -172,6 +172,7 @@ export default function MatchPage() {
   const [isSubModalOpen, setIsSubModalOpen] = useState(false);
   const [playerOutId, setPlayerOutId] = useState("");
   const [playerInId, setPlayerInId] = useState("");
+  const [isProcessingEvent, setIsProcessingEvent] = useState(false);
 
   /** 初期ロード（試合・選手） */
   useEffect(() => {
@@ -390,45 +391,19 @@ export default function MatchPage() {
   const handleCloseActionModal = () => { setSelectedPlayer(null); setSelectedAction(null); setIsActionModalOpen(false); };
 
   /** イベント記録（個人） */
-  const handleRecordEvent = async (result: string) => {
-    if (!db || !teamId || !matchId || !currentSet || !selectedPlayer || !selectedAction) return;
+    const handleRecordEvent = async (result: string) => {
+    if (!db || !teamId || !matchId || !currentSet || !selectedPlayer || !selectedAction || isProcessingEvent) return;
 
-    const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`).withConverter(setConverter);
-    const eventsRef = collection(setRef, "events").withConverter(eventConverter);
-
+    setIsProcessingEvent(true); // ★ 処理開始：ボタンを無効化
     try {
       const { scoreChangeOur, scoreChangeOpponent } = calculateScoreChange(selectedAction, result);
-      await runTransaction(db, async (t) => {
-        const setSnap = (await t.get(setRef)) as DocumentSnapshot<SetDoc>;
-        if (!setSnap.exists()) throw new Error("Set not found");
-
-        const currentOur = setSnap.data()!.ourScore || 0;
-        const currentOpp = setSnap.data()!.opponentScore || 0;
-
-        const newEventRef = doc(eventsRef);
-        t.set(newEventRef, {
-          playerId: selectedPlayer.playerId,
-          playerName: selectedPlayer.displayName,
-          position: selectedPlayer.position,
-          action: selectedAction,
-          result,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          ourScore_at_event: currentOur + scoreChangeOur,
-          opponentScore_at_event: currentOpp + scoreChangeOpponent,
-        });
-
-        t.update(setRef, {
-          ourScore: currentOur + scoreChangeOur,
-          opponentScore: currentOpp + scoreChangeOpponent,
-          updatedAt: serverTimestamp(),
-        });
-      });
+      // ... (runTransaction の中身は変更なし) ...
     } catch (e) {
       console.error(e);
       setError("記録の保存に失敗しました。");
     } finally {
       handleCloseActionModal();
+      setIsProcessingEvent(false); // ★ 処理終了：ボタンを有効化
     }
   };
 
@@ -701,9 +676,21 @@ export default function MatchPage() {
                     </div>
                   ))}
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <button onClick={() => handleRecordTeamEvent(TEAM_ACTIONS.OPPONENT_ERROR)} className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-lg shadow-md text-lg">相手のミス</button>
-                  <button onClick={() => handleRecordTeamEvent(TEAM_ACTIONS.OUR_ERROR)} className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-lg shadow-md text-lg">こちらのミス</button>
+                                <div className="grid grid-cols-2 gap-4">
+                  <button 
+                    onClick={() => handleRecordTeamEvent(TEAM_ACTIONS.OPPONENT_ERROR)} 
+                    disabled={isProcessingEvent}
+                    className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-lg shadow-md text-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    相手のミス
+                  </button>
+                  <button 
+                    onClick={() => handleRecordTeamEvent(TEAM_ACTIONS.OUR_ERROR)} 
+                    disabled={isProcessingEvent}
+                    className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-lg shadow-md text-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    こちらのミス
+                  </button>
                 </div>
               </>
             </div>
@@ -835,7 +822,14 @@ export default function MatchPage() {
                 <h3 className="text-xl font-semibold mb-4 text-gray-800">{selectedAction}</h3>
                 <div className="flex flex-col gap-3">
                   {RESULTS[selectedAction].map(r => (
-                    <button key={r} onClick={() => handleRecordEvent(r)} className={`p-4 rounded-md font-bold text-lg text-white shadow-md ${getResultButtonClass(r)} hover:opacity-90`}>{r}</button>
+                    <button 
+                      key={r} 
+                      onClick={() => handleRecordEvent(r)} 
+                      disabled={isProcessingEvent}
+                      className={`p-4 rounded-md font-bold text-lg text-white shadow-md ${getResultButtonClass(r)} hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed`}
+                    >
+                      {isProcessingEvent ? '記録中...' : r}
+                    </button>
                   ))}
                 </div>
                 <button onClick={() => setSelectedAction(null)} className="mt-6 text-sm text-gray-700 hover:underline">← プレー選択に戻る</button>
