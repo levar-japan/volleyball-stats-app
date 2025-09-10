@@ -25,6 +25,7 @@ import {
  *  ================================ */
 type ActionStatus = 'scheduled' | 'ongoing' | 'finished';
 type SetStatus = 'pending' | 'ongoing' | 'finished';
+type ServerTS = ReturnType<typeof serverTimestamp>;
 
 interface PlayerDoc { displayName: string; }
 interface MatchDoc { opponent: string; status: ActionStatus; }
@@ -35,8 +36,8 @@ interface SetDoc {
   opponentScore: number;
   status: SetStatus;
   roster: RosterPlayer[];
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
+  createdAt?: Timestamp | ServerTS;
+  updatedAt?: Timestamp | ServerTS;
 }
 type ActionType = "サーブ" | "スパイク" | "ブロック" | "ディグ" | "レセプション";
 interface EventDoc {
@@ -45,10 +46,10 @@ interface EventDoc {
   playerId: string | null;
   playerName: string;
   position: string | null;
-  createdAt: Timestamp;
+  createdAt: Timestamp | ServerTS;
   ourScore_at_event?: number;
   opponentScore_at_event?: number;
-  updatedAt?: Timestamp;
+  updatedAt?: Timestamp | ServerTS;
 }
 
 /** ================================
@@ -68,7 +69,7 @@ function makeConverter<T extends object>(): FirestoreDataConverter<T> {
     toFirestore(obj: T) {
       const o = { ...(obj as unknown as Record<string, unknown>) };
       delete (o as Record<string, unknown>)['id'];
-      return o;
+      return o as T;
     },
     fromFirestore(snapshot: QueryDocumentSnapshot, options) {
       return snapshot.data(options) as T;
@@ -110,6 +111,13 @@ const TEAM_ACTIONS = {
   OUR_ERROR: "こちらのミス（相手チーム失点）",
 } as const;
 
+/** ================================
+ *  ヘルパー
+ *  ================================ */
+const timeFormatOptions: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
+const toDateSafe = (ts?: Timestamp | ServerTS) =>
+  (ts instanceof Timestamp ? ts.toDate() : null);
+
 export default function MatchPage() {
   const { db, teamInfo } = useFirebase();
   const pathname = usePathname();
@@ -138,8 +146,6 @@ export default function MatchPage() {
   // 次セット準備用
   const [isPreparingNextSet, setIsPreparingNextSet] = useState(false);
   const [nextSetNumberPreview, setNextSetNumberPreview] = useState<number | null>(null);
-
-  const timeFormatOptions: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
 
   /** 初期ロード（試合・選手） */
   useEffect(() => {
@@ -370,7 +376,7 @@ export default function MatchPage() {
     }
   };
 
-  /** ★ 試合終了（進行中セットがあれば閉じて試合を finished に） */
+  /** 試合終了（進行中セットを閉じ、試合を finished に） */
   const handleFinishMatch = async () => {
     if (!teamInfo?.id || !matchId) return;
     if (!window.confirm("試合を終了しますか？（進行中のセットがあれば終了します）")) return;
@@ -427,7 +433,7 @@ export default function MatchPage() {
           position: selectedPlayer.position,
           action: selectedAction,
           result,
-          createdAt: serverTimestamp() as unknown as Timestamp,
+          createdAt: serverTimestamp(),
           ourScore_at_event: currentOurScore + scoreChangeOur,
           opponentScore_at_event: currentOpponentScore + scoreChangeOpponent,
         });
@@ -468,7 +474,7 @@ export default function MatchPage() {
           position: null,
           action,
           result: "",
-          createdAt: serverTimestamp() as unknown as Timestamp,
+          createdAt: serverTimestamp(),
           ourScore_at_event: currentOurScore + scoreChangeOur,
           opponentScore_at_event: currentOpponentScore + scoreChangeOpponent,
         });
@@ -714,19 +720,12 @@ export default function MatchPage() {
                   <p className="text-xl font-bold text-gray-800">Set {viewingSet.setNumber}</p>
                   <div className="flex flex-wrap justify-center gap-2 mt-2">
                     <button onClick={openAllEventsModal} className="px-3 py-2 bg-gray-200 text-gray-900 text-sm font-bold rounded-md hover:bg-gray-300">全履歴</button>
-                    {viewingSet.status === 'ongoing' && <>
-                      <button onClick={handleUndoEvent} className="px-3 py-2 bg-yellow-600 text-white text-sm font-bold rounded-md hover:bg-yellow-700">取消</button>
-                      <button onClick={openSubModal} className="px-3 py-2 bg-green-600 text-white text-sm font-bold rounded-md hover:bg-green-700">選手交代</button>
-                      <button onClick={handleFinishSet} className="px-3 py-2 bg-red-600 text-white text-sm font-bold rounded-md hover:bg-red-700">セット終了</button>
-                      <button onClick={handleFinishMatch} className="px-3 py-2 bg-red-700 text-white text-sm font-bold rounded-md hover:bg-red-800">試合終了</button>
-                    </>}
-                    {viewingSet.status === 'finished' && match.status !== 'finished' && (
-                      <button
-                        onClick={handleFinishMatch}
-                        className="px-3 py-2 bg-red-600 text-white text-sm font-bold rounded-md hover:bg-red-700"
-                      >
-                        試合終了
-                      </button>
+                    {viewingSet.status === 'ongoing' && (
+                      <>
+                        <button onClick={handleUndoEvent} className="px-3 py-2 bg-yellow-600 text-white text-sm font-bold rounded-md hover:bg-yellow-700">取消</button>
+                        <button onClick={openSubModal} className="px-3 py-2 bg-green-600 text-white text-sm font-bold rounded-md hover:bg-green-700">選手交代</button>
+                        <button onClick={handleFinishSet} className="px-3 py-2 bg-red-600 text-white text-sm font-bold rounded-md hover:bg-red-700">セット終了</button>
+                      </>
                     )}
                     {viewingSet.status === 'finished' && (
                       <button
@@ -797,7 +796,7 @@ export default function MatchPage() {
                       {event.playerName}: <span className="font-medium text-gray-700">{event.action} - {event.result}</span>
                     </p>
                     <p className="text-sm text-gray-600 mt-1">
-                      {event.createdAt?.toDate().toLocaleTimeString()}
+                      {toDateSafe(event.createdAt)?.toLocaleTimeString('ja-JP', timeFormatOptions) ?? ''}
                     </p>
                   </li>
                 ))}
@@ -805,16 +804,30 @@ export default function MatchPage() {
             </div>
           </div>
         ) : (
-          <div className="text-center bg-white p-10 rounded-lg shadow-md">
-            <h2 className="text-3xl font-bold text-gray-800 mb-4">最初のセットを開始</h2>
-            <p className="text-gray-700 mb-8 text-lg">出場する選手とポジションを選択してください。</p>
-            <button
-              onClick={() => handleOpenRosterModal()}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg shadow-md text-lg"
-            >
-              ロスターを選択してセット開始
-            </button>
-          </div>
+          <>
+            {match.status === 'finished' ? (
+              <div className="text-center bg-white p-10 rounded-lg shadow-md">
+                <h2 className="text-3xl font-bold text-gray-800 mb-4">この試合は終了しています</h2>
+                <p className="text-gray-700 mb-8 text-lg">結果・集計を確認できます。</p>
+                <Link href={`/matches/${matchId}/summary`}>
+                  <span className="inline-block bg-gray-700 hover:bg-gray-800 text-white font-bold py-4 px-8 rounded-lg shadow-md text-lg">
+                    集計を見る
+                  </span>
+                </Link>
+              </div>
+            ) : (
+              <div className="text-center bg-white p-10 rounded-lg shadow-md">
+                <h2 className="text-3本 font-bold text-gray-800 mb-4">最初のセットを開始</h2>
+                <p className="text-gray-700 mb-8 text-lg">出場する選手とポジションを選択してください。</p>
+                <button
+                  onClick={handlePrepareNextSet}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg shadow-md text-lg"
+                >
+                  ロスターを選択してセット開始
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -1041,7 +1054,7 @@ export default function MatchPage() {
                         {event.playerName}: <span className="font-normal text-gray-700">{event.action} - {event.result || 'N/A'}</span>
                       </p>
                       <p className="text-sm text-gray-600 mt-1">
-                        {event.createdAt?.toDate().toLocaleTimeString('ja-JP', timeFormatOptions)}
+                        {toDateSafe(event.createdAt)?.toLocaleTimeString('ja-JP', timeFormatOptions) ?? ''}
                       </p>
                     </div>
                     <div className="flex gap-2">
