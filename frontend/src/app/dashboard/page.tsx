@@ -196,7 +196,6 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="flex items-center gap-4">
-            <button onClick={handleLeaveTeam} className="text-xs text-gray-500 hover:text-red-600">チーム退出</button>
             <button onClick={() => auth.signOut()} className="px-4 py-2 bg-red-500 text-white font-semibold rounded-md hover:bg-red-600 transition-colors text-sm">ログアウト</button>
           </div>
         </header>
