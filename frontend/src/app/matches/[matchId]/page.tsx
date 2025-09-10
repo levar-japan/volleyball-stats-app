@@ -58,7 +58,7 @@ interface EventDoc {
 interface Player extends PlayerDoc { id: string; }
 interface Match extends MatchDoc { id: string; }
 interface Set extends SetDoc { id: string; }
-interface Event extends EventDoc { id: string; }
+interface Event { id: string; action: ActionType | string; result: string; playerId: string; playerName: string; position: string; createdAt: Timestamp; ourScore_at_event?: number; opponentScore_at_event?: number; }
 interface EditingEvent { id: string; player: Player; action: ActionType; result: string; }
 
 /** ================================
@@ -1053,6 +1053,14 @@ export default function MatchPage() {
                       <p className="text-base font-medium text-gray-800">
                         {event.playerName}: <span className="font-normal text-gray-700">{event.action} - {event.result || 'N/A'}</span>
                       </p>
+                      <div className="flex items-center mt-1">
+                          <p className="text-sm text-gray-600">{event.createdAt?.toDate().toLocaleTimeString('ja-JP', timeFormatOptions)}</p>
+                          {event.ourScore_at_event != null && event.opponentScore_at_event != null && (
+                            <p className="ml-4 text-sm font-mono tracking-wider text-gray-800 bg-gray-100 px-2 py-0.5 rounded">
+                              {event.ourScore_at_event} - {event.opponentScore_at_event}
+                            </p>
+                          )}
+                        </div>
                       <p className="text-sm text-gray-600 mt-1">
                         {toDateSafe(event.createdAt)?.toLocaleTimeString('ja-JP', timeFormatOptions) ?? ''}
                       </p>
