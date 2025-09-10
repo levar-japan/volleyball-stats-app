@@ -117,7 +117,7 @@ const RESULTS: Record<ActionType, string[]> = {
   ブロック: ["得点", "成功", "失点"],
   ディグ: ["成功", "失敗"],
   レセプション: ["Aパス", "Bパス", "Cパス", "失点"],
-  トスミス: [], // トスミスは結果を選択しない
+  トスミス: [],
 };
 
 const TEAM_ACTIONS = {
@@ -285,12 +285,10 @@ export default function MatchPage() {
   const handleStartSet = async () => {
     if (!db || !teamId || !matchId) return;
     if (roster.size < 1) { alert("少なくとも1人の選手をポジションに設定してください。"); return; }
-
     const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`).withConverter(matchConverter);
     const setsRef  = collection(matchRef, "sets").withConverter(setConverter);
     const nextSetNumber = Math.max(0, ...sets.map(s => s.setNumber)) + 1;
     const newSetRef = doc(setsRef);
-
     try {
       await runTransaction(db, async (t) => {
         const matchDoc = await t.get(matchRef);
@@ -298,7 +296,6 @@ export default function MatchPage() {
         const qy = query(setsRef, where("status", "==", "ongoing"));
         const os = await getDocs(qy);
         os.docs.forEach(d => t.update(d.ref, { status: "finished", updatedAt: serverTimestamp() }));
-
         t.set(newSetRef, {
           setNumber: nextSetNumber,
           ourScore: 0,
@@ -308,12 +305,10 @@ export default function MatchPage() {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
-        
         if (matchDoc.data()?.status !== 'finished') {
           t.update(matchRef, { status: "ongoing", updatedAt: serverTimestamp() });
         }
       });
-
       setViewingSetId(newSetRef.id);
       setIsPreparingNextSet(false);
       setNextSetNumberPreview(null);
@@ -341,10 +336,8 @@ export default function MatchPage() {
   const handleFinishMatch = async () => {
     if (!db || !teamId || !matchId) return;
     if (!window.confirm("試合を終了しますか？（進行中のセットがあれば終了します）")) return;
-
     const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`).withConverter(matchConverter);
     const setsRef  = collection(matchRef, "sets").withConverter(setConverter);
-
     try {
       await runTransaction(db, async (t) => {
         const qy = query(setsRef, where("status", "==", "ongoing"));
@@ -366,15 +359,12 @@ export default function MatchPage() {
   const handleRecordEvent = async (result: string, actionKey?: keyof typeof ACTIONS) => {
     const action = actionKey || selectedAction;
     if (!db || !teamId || !matchId || !currentSet || !selectedPlayer || !action || isProcessingEvent) return;
-    
     const actionToRecord = actionKey || Object.keys(ACTIONS).find(key => ACTIONS[key as keyof typeof ACTIONS] === action) || 'UNKNOWN';
-
     setIsProcessingEvent(true);
     try {
       const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`).withConverter(setConverter);
       const eventsRef = collection(setRef, "events").withConverter(eventConverter);
       const { scoreChangeOur, scoreChangeOpponent } = calculateScoreChange(actionToRecord, result);
-      
       await runTransaction(db, async (t) => {
         const setSnap = (await t.get(setRef)) as DocumentSnapshot<SetDoc>;
         if (!setSnap.exists()) throw new Error("Set not found");
@@ -617,7 +607,7 @@ export default function MatchPage() {
               Set {s.setNumber}{s.status === "ongoing" ? " (記録中)" : ""}
             </button>
           ))}
-          {!activeSet && <button onClick={handlePrepareNextSet} className="px-4 py-2 rounded-md font-bold text-sm bg-green-500 text-white hover:bg-green-600 whitespace-nowrap">＋ 次のセット</button>}
+          {!activeSet && match.status !== "finished" && <button onClick={handlePrepareNextSet} className="px-4 py-2 rounded-md font-bold text-sm bg-green-500 text-white hover:bg-green-600 whitespace-nowrap">＋ 次のセット</button>}
         </div>
 
         {currentSet ? (
@@ -741,7 +731,11 @@ export default function MatchPage() {
             <h2 className="text-2xl font-bold mb-6 text-gray-900">{selectedPlayer.displayName}のプレー</h2>
             {!selectedAction ? (
               <div className="grid grid-cols-2 gap-4">
-                {Object.values(ACTIONS).filter(a => a !== 'トスミス').map(a => (
+                {(
+                  selectedPlayer.position === 'L' 
+                    ? Object.values(ACTIONS).filter(a => a === 'レセプション' || a === 'ディグ')
+                    : Object.values(ACTIONS).filter(a => a !== 'トスミス')
+                ).map(a => (
                   <button key={a} onClick={() => setSelectedAction(a as ActionType)} className={`p-4 rounded-md font-bold text-lg text-white shadow-md ${getActionButtonClass(a as ActionType)}`}>{a}</button>
                 ))}
                 {selectedPlayer.position === 'S' && (
