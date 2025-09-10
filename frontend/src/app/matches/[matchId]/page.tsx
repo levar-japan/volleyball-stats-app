@@ -213,7 +213,7 @@ export default function MatchPage() {
       setError("セット情報の取得に失敗しました。");
     });
     return () => unsubscribe();
-  }, [teamInfo, db, matchId, viewingSet, isPreparingNextSet]);
+  }, [teamInfo, db, matchId, isPreparingNextSet]);
 
   /** イベント購読（選択中セット） */
   useEffect(() => {
