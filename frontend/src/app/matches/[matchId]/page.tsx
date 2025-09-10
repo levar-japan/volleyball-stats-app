@@ -603,18 +603,18 @@ export default function MatchPage() {
   const closeSubModal = () => setIsSubModalOpen(false);
 
   const handleSubstitutePlayer = async () => {
-    if (!playerInId || !playerOutId || !activeSet || !teamInfo?.id) {
+    if (!playerInId || !playerOutId || !viewingSet || !teamInfo?.id) {
       alert("交代する選手を両方選択してください。");
       return;
     }
     const teamId = teamInfo.id;
-    const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${activeSet.id}`).withConverter(setConverter);
+    const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${viewingSet.id}`).withConverter(setConverter);
     const playerInObject = players.find(p => p.id === playerInId);
     if (!playerInObject) {
       setError("交代加入する選手の情報が見つかりません。");
       return;
     }
-    const newRoster = activeSet.roster.map(rp => {
+    const newRoster = viewingSet.roster.map(rp => {
       if (rp.playerId === playerOutId) {
         return { ...rp, playerId: playerInObject.id, displayName: playerInObject.displayName };
       }
