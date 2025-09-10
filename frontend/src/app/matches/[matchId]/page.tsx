@@ -201,12 +201,12 @@ export default function MatchPage() {
       const ongoingSet = setsData.find(s => s.status === 'ongoing') || null;
       setActiveSet(ongoingSet);
 
-      if (ongoingSet) {
-        setViewingSet(ongoingSet);
-      } else if (setsData.length > 0 && !viewingSet) {
-        setViewingSet(setsData[setsData.length - 1]);
-      } else if (setsData.some(s => s.id === viewingSet?.id)) {
-        setViewingSet(current => setsData.find(s => s.id === current?.id) || null);
+      if (!viewingSet || !setsData.some(s => s.id === viewingSet.id)) {
+        if (ongoingSet) {
+          setViewingSet(ongoingSet); // 進行中のセットがあればそれを表示
+        } else if (setsData.length > 0) {
+          setViewingSet(setsData[setsData.length - 1]); // なければ最後のセットを表示
+        }
       }
     }, (err) => {
       console.error("セット情報の取得に失敗:", err);
