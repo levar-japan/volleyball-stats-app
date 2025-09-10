@@ -648,7 +648,7 @@ export default function MatchPage() {
               Set {s.setNumber}{s.status === "ongoing" ? " (記録中)" : ""}
             </button>
           ))}
-          {!activeSet && match.status !== "finished" && (
+          {!activeSet && (
             <button onClick={handlePrepareNextSet} className="px-4 py-2 rounded-md font-bold text-sm bg-green-500 text-white hover:bg-green-600 whitespace-nowrap">＋ 次のセット</button>
           )}
         </div>
