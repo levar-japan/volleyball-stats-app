@@ -1084,11 +1084,11 @@ export default function MatchPage() {
             <div className="space-y-5">
               <div>
                 <label htmlFor="player-out" className="block text-base font-medium text-gray-700">コートから退く選手</label>
-                <select
-                  id="player-out"
-                  value={playerOutId}
-                  onChange={(e) => setPlayerOutId(e.target.value)}
-                  className="w-full mt-1 border p-3 rounded-md text-base"
+                <select 
+                  id="player-out" 
+                  value={playerOutId} 
+                  onChange={(e) => setPlayerOutId(e.target.value)} 
+                  className="appearance-none w-full p-3 text-lg font-medium text-gray-800 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-no-repeat bg-right-3 bg-[url('data:image/svg+xml,%3csvg%20xmlns%3d%22http%3a//www.w3.org/2000/svg%22%20fill%3d%22none%22%20viewBox%3d%220%200%2024%2024%22%20stroke-width%3d%222%22%20stroke%3d%22%236b7280%22%3e%3cpath%20stroke-linecap%3d%22round%22%20stroke-linejoin%3d%22round%22%20d%3d%22m19.5%208.25-7.5%207.5-7.5-7.5%22%20/%3e%3c/svg%3e')]"
                 >
                   <option value="" disabled>選択してください</option>
                   {activeSet.roster.map(p => (
@@ -1097,12 +1097,12 @@ export default function MatchPage() {
                 </select>
               </div>
               <div>
-                <label htmlFor="player-in" className="block text-base font-medium text-gray-700">コートに入る選手</label>
-                <select
-                  id="player-in"
-                  value={playerInId}
-                  onChange={(e) => setPlayerInId(e.target.value)}
-                  className="w-full mt-1 border p-3 rounded-md text-base"
+                <label htmlFor="player-in" className="block text-base font-medium text-gray-700 mb-2">コートに入る選手</label>
+                <select 
+                  id="player-in" 
+                  value={playerInId} 
+                  onChange={(e) => setPlayerInId(e.target.value)} 
+                  className="appearance-none w-full p-3 text-lg font-medium text-gray-800 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-no-repeat bg-right-3 bg-[url('data:image/svg+xml,%3csvg%20xmlns%3d%22http%3a//www.w3.org/2000/svg%22%20fill%3d%22none%22%20viewBox%3d%220%200%2024%2024%22%20stroke-width%3d%222%22%20stroke%3d%22%236b7280%22%3e%3cpath%20stroke-linecap%3d%22round%22%20stroke-linejoin%3d%22round%22%20d%3d%22m19.5%208.25-7.5%207.5-7.5-7.5%22%20/%3e%3c/svg%3e')]"
                 >
                   <option value="" disabled>選択してください</option>
                   {subPlayers.map(p => (
