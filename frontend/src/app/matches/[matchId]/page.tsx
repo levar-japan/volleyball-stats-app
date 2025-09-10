@@ -1060,7 +1060,7 @@ export default function MatchPage() {
         </div>
       )}
 
-      {isSubModalOpen && activeSet && (
+      {isSubModalOpen && viewingSet && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
           <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
             <h2 className="text-2xl font-bold mb-6 text-gray-900">選手交代</h2>
@@ -1074,7 +1074,7 @@ export default function MatchPage() {
                   className="w-full p-3 text-lg font-medium text-gray-800 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 >
                   <option value="" disabled>選択してください</option>
-                  {activeSet.roster.map(p => (
+                  {viewingSet.roster.map(p => (
                     <option key={p.playerId} value={p.playerId}>{p.displayName} ({p.position})</option>
                   ))}
                 </select>
