@@ -1,33 +1,36 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useFirebase } from "@/app/FirebaseProvider";
 import {
+  doc,
+  collection,
+  getDocs,
+  query,
+  where,
+  serverTimestamp,
+  Timestamp,
+  runTransaction,
+  onSnapshot,
+  updateDoc,
+  orderBy,
   FirestoreDataConverter,
   QueryDocumentSnapshot,
-  Timestamp,
-  collection,
-  doc,
-  getDocs,
-  onSnapshot,
-  orderBy,
-  query,
-  runTransaction,
-  serverTimestamp,
-  updateDoc,
-  where,
   DocumentSnapshot,
 } from "firebase/firestore";
 
-/** Firestoreドキュメント型 */
+/** ================================
+ *  Firestoreドキュメント用の型
+ *  ================================ */
 type ActionStatus = "scheduled" | "ongoing" | "finished";
 type SetStatus = "pending" | "ongoing" | "finished";
 type ServerTS = ReturnType<typeof serverTimestamp>;
 
 interface PlayerDoc { displayName: string; }
-interface MatchDoc { opponent: string; status: ActionStatus; }
+interface MatchDoc  { opponent: string; status: ActionStatus; }
 interface RosterPlayer { playerId: string; displayName: string; position: string; }
+
 interface SetDoc {
   setNumber: number;
   ourScore: number;
@@ -37,7 +40,9 @@ interface SetDoc {
   createdAt?: Timestamp | ServerTS;
   updatedAt?: Timestamp | ServerTS;
 }
+
 type ActionType = "サーブ" | "スパイク" | "ブロック" | "ディグ" | "レセプション";
+
 interface EventDoc {
   action: ActionType | string;
   result: string;
@@ -50,10 +55,12 @@ interface EventDoc {
   updatedAt?: Timestamp | ServerTS;
 }
 
-/** UI型 */
+/** ================================
+ *  UI用の型（id付き）
+ *  ================================ */
 interface Player extends PlayerDoc { id: string; }
-interface Match extends MatchDoc { id: string; }
-interface Set extends SetDoc { id: string; }
+interface Match  extends MatchDoc  { id: string; }
+interface Set    extends SetDoc    { id: string; }
 interface Event {
   id: string;
   action: ActionType | string;
@@ -67,7 +74,9 @@ interface Event {
 }
 interface EditingEvent { id: string; player: Player; action: ActionType; result: string; }
 
-/** converter & util */
+/** ================================
+ *  Firestore Data Converter
+ *  ================================ */
 function makeConverter<T extends object>(): FirestoreDataConverter<T> {
   return {
     toFirestore(obj: T) {
@@ -80,6 +89,7 @@ function makeConverter<T extends object>(): FirestoreDataConverter<T> {
     },
   };
 }
+
 const withId = <T extends object>(snap: QueryDocumentSnapshot<T>) =>
   ({ id: snap.id, ...snap.data() }) as { id: string } & T;
 
@@ -88,9 +98,18 @@ const matchConverter  = makeConverter<MatchDoc>();
 const setConverter    = makeConverter<SetDoc>();
 const eventConverter  = makeConverter<EventDoc>();
 
-/** 定数 */
+/** ================================
+ *  定数
+ *  ================================ */
 const POSITIONS = ["S", "OH", "OP", "MB", "L", "SUB"] as const;
-const ACTIONS = { SERVE: "サーブ", SPIKE: "スパイク", BLOCK: "ブロック", DIG: "ディグ", RECEPTION: "レセプション" } as const;
+const ACTIONS = {
+  SERVE: "サーブ",
+  SPIKE: "スパイク",
+  BLOCK: "ブロック",
+  DIG: "ディグ",
+  RECEPTION: "レセプション",
+} as const;
+
 const RESULTS: Record<ActionType, string[]> = {
   サーブ: ["得点", "成功", "失点"],
   スパイク: ["得点", "成功", "失点"],
@@ -98,134 +117,133 @@ const RESULTS: Record<ActionType, string[]> = {
   ディグ: ["成功", "失敗"],
   レセプション: ["Aパス", "Bパス", "Cパス", "失点"],
 };
+
 const TEAM_ACTIONS = {
   OPPONENT_ERROR: "相手のミス（自チーム得点）",
   OUR_ERROR: "こちらのミス（相手チーム失点）",
 } as const;
 
-/** ヘルパー */
+/** ================================
+ *  ヘルパー
+ *  ================================ */
 const timeFormatOptions: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit" };
 const toDateSafe = (ts?: Timestamp | ServerTS) => (ts instanceof Timestamp ? ts.toDate() : null);
 
-/** コンポーネント */
+/** ================================
+ *  コンポーネント
+ *  ================================ */
 export default function MatchPage() {
   const { db, teamInfo } = useFirebase();
   const pathname = usePathname();
   const matchId = pathname.split("/")[2] || "";
   const teamId = teamInfo?.id ?? null;
 
-  // 状態
+  // --- state ---
   const [match, setMatch] = useState<Match | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [sets, setSets] = useState<Set[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeSet, setActiveSet] = useState<Set | null>(null);
 
-  // 表示中セットは「idだけ」保持（これがバグ修正のポイント）
+  // 重要：オブジェクトではなくIDだけ保持
   const [viewingSetId, setViewingSetId] = useState<string | null>(null);
+
+  // 表示中セットは sets（購読の最新）から導出
   const currentSet = useMemo(
     () => (viewingSetId ? sets.find(s => s.id === viewingSetId) ?? null : null),
     [sets, viewingSetId]
   );
 
-  // 進行中セット
-  const activeSet = useMemo(
-    () => sets.find(s => s.status === "ongoing") ?? null,
-    [sets]
-  );
-
-  // モーダル・入力系
-  const [isRosterModalOpen, setIsRosterModalOpen] = useState(false);
-  const [roster, setRoster] = useState<Map<string, RosterPlayer>>(new Map());
-  const [selectedPlayer, setSelectedPlayer] = useState<RosterPlayer | null>(null);
-  const [selectedAction, setSelectedAction] = useState<ActionType | null>(null);
-  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
-  const [editingEvent, setEditingEvent] = useState<EditingEvent | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isAllEventsModalOpen, setIsAllEventsModalOpen] = useState(false);
-  const [isSubModalOpen, setIsSubModalOpen] = useState(false);
-  const [playerOutId, setPlayerOutId] = useState<string>("");
-  const [playerInId, setPlayerInId] = useState<string>("");
-
-  // 次セット準備
+  // 次セット準備用
   const [isPreparingNextSet, setIsPreparingNextSet] = useState(false);
   const [nextSetNumberPreview, setNextSetNumberPreview] = useState<number | null>(null);
 
-  // ===== 初期ロード（試合・選手） =====
+  // モーダル / 入力用
+  const [isRosterModalOpen, setIsRosterModalOpen] = useState(false);
+  const [roster, setRoster] = useState<Map<string, RosterPlayer>>(new Map());
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<RosterPlayer | null>(null);
+  const [selectedAction, setSelectedAction] = useState<ActionType | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<EditingEvent | null>(null);
+  const [isAllEventsModalOpen, setIsAllEventsModalOpen] = useState(false);
+  const [isSubModalOpen, setIsSubModalOpen] = useState(false);
+  const [playerOutId, setPlayerOutId] = useState("");
+  const [playerInId, setPlayerInId] = useState("");
+
+  /** 初期ロード（試合・選手） */
   useEffect(() => {
     if (!db || !teamId || !matchId) return;
 
     const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`).withConverter(matchConverter);
     const playersRef = collection(db, `teams/${teamId}/players`).withConverter(playerConverter);
 
-    const unsubMatch = onSnapshot(
+    setLoading(true);
+    const unmatch = onSnapshot(
       matchRef,
       (docSnap) => {
         if (docSnap.exists()) setMatch({ id: docSnap.id, ...docSnap.data() } as Match);
         else setError("試合が見つかりません。");
       },
-      () => setError("試合データの購読に失敗しました。")
+      () => setError("試合情報の取得に失敗しました。")
     );
 
-    (async () => {
-      try {
-        const playersSnap = await getDocs(playersRef);
-        setPlayers(playersSnap.docs.map(d => withId(d)) as Player[]);
-      } catch {
-        setError("選手データの取得に失敗しました。");
-      } finally {
-        setLoading(false);
-      }
-    })();
+    getDocs(playersRef)
+      .then((ps) => setPlayers(ps.docs.map(d => withId(d)) as Player[]))
+      .catch(() => setError("選手の読み込みに失敗しました。"))
+      .finally(() => setLoading(false));
 
-    return () => unsubMatch();
+    return () => { unmatch(); };
   }, [db, teamId, matchId]);
 
-  // ===== セット一覧購読 & viewingSetId 初期決定 =====
+  /** セット一覧購読（viewingSetId の初期決定・フォールバックもここで） */
   useEffect(() => {
     if (!db || !teamId || !matchId) return;
+
     const setsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets`).withConverter(setConverter);
     const qy = query(setsRef, orderBy("setNumber", "asc"));
 
-    let initial = true;
-    const unsub = onSnapshot(
+    let isInitial = true;
+    const unsets = onSnapshot(
       qy,
-      (snap) => {
-        const arr = snap.docs.map(d => withId(d)) as Set[];
-        setSets(arr);
+      (snapshot) => {
+        const list = snapshot.docs.map(d => withId(d)) as Set[];
+        setSets(list);
 
-        const ongoing = arr.find(s => s.status === "ongoing") ?? null;
-        if (initial) {
-          initial = false;
-          const first = ongoing ?? (arr.length ? arr[arr.length - 1] : null);
-          setViewingSetId(first?.id ?? null);
-        } else if (viewingSetId && !arr.some(s => s.id === viewingSetId)) {
-          // 表示中セットが削除/終了で見つからない場合のフォールバック
-          const fb = ongoing ?? (arr.length ? arr[arr.length - 1] : null);
-          setViewingSetId(fb?.id ?? null);
+        const ongoing = list.find(s => s.status === "ongoing") ?? null;
+        setActiveSet(ongoing);
+
+        if (isInitial) {
+          isInitial = false;
+          const initial = ongoing ?? (list.length ? list[list.length - 1] : null);
+          setViewingSetId(initial?.id ?? null);
+        } else if (viewingSetId && !list.some(s => s.id === viewingSetId)) {
+          const fallback = ongoing ?? (list.length ? list[list.length - 1] : null);
+          setViewingSetId(fallback?.id ?? null);
         }
       },
       () => setError("セット情報の取得に失敗しました。")
     );
-    return () => unsub();
+
+    return () => { unsets(); };
   }, [db, teamId, matchId, viewingSetId]);
 
-  // ===== イベント購読（選択中セットの最新反映） =====
+  /** イベント購読（表示中セットのidだけに依存） */
   useEffect(() => {
     if (!db || !teamId || !matchId || !currentSet) { setEvents([]); return; }
-    const eventsRef = collection(
-      db,
-      `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}/events`
-    ).withConverter(eventConverter);
+
+    const eventsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}/events`).withConverter(eventConverter);
     const qy = query(eventsRef, orderBy("createdAt", "desc"));
 
-    const unsub = onSnapshot(
+    const unevents = onSnapshot(
       qy,
-      (snap) => setEvents(snap.docs.map(d => withId(d)) as Event[]),
+      (snapshot) => setEvents(snapshot.docs.map(d => withId(d)) as Event[]),
       () => setError("プレー履歴の取得に失敗しました。")
     );
-    return () => unsub();
+
+    return () => { unevents(); };
   }, [db, teamId, matchId, currentSet?.id]);
 
   /** スコア差分計算 */
@@ -249,11 +267,13 @@ export default function MatchPage() {
     }
     setIsRosterModalOpen(true);
   };
+
   const handleCloseRosterModal = () => {
     setIsRosterModalOpen(false);
     setIsPreparingNextSet(false);
     setNextSetNumberPreview(null);
   };
+
   const handleRosterChange = (playerId: string, displayName: string, position: string) => {
     setRoster(prev => {
       const n = new Map(prev);
@@ -276,11 +296,11 @@ export default function MatchPage() {
     const nextNo = Math.max(0, ...sets.map(s => s.setNumber)) + 1;
     setNextSetNumberPreview(nextNo);
     setIsPreparingNextSet(true);
-    setViewingSetId(null);
+    setViewingSetId(null);            // 重要：idだけクリア
     setIsRosterModalOpen(true);
   };
 
-  /** セット開始（viewingSetId のみを更新＝最新を購読で反映） */
+  /** セット開始（idのみ更新し、オブジェクトは購読で反映） */
   const handleStartSet = async () => {
     if (!db || !teamId || !matchId) return;
     if (roster.size < 1) { alert("少なくとも1人の選手をポジションに設定してください。"); return; }
@@ -293,8 +313,8 @@ export default function MatchPage() {
     try {
       await runTransaction(db, async (t) => {
         const qy = query(setsRef, where("status", "==", "ongoing"));
-        const ongoingSnap = await getDocs(qy);
-        ongoingSnap.docs.forEach(d => t.update(d.ref, { status: "finished", updatedAt: serverTimestamp() }));
+        const os = await getDocs(qy);
+        os.docs.forEach(d => t.update(d.ref, { status: "finished", updatedAt: serverTimestamp() }));
 
         t.set(newSetRef, {
           setNumber: nextSetNumber,
@@ -308,7 +328,7 @@ export default function MatchPage() {
         t.update(matchRef, { status: "ongoing", updatedAt: serverTimestamp() });
       });
 
-      // ここは「id だけ」更新（オブジェクトを保持しない）
+      // ここは「idだけ」更新（中身は購読で入る）
       setViewingSetId(newSetRef.id);
       setIsPreparingNextSet(false);
       setNextSetNumberPreview(null);
@@ -441,7 +461,7 @@ export default function MatchPage() {
     }
   };
 
-  /** 取り消し / 編集 / 削除 / 更新 */
+  /** 取消／編集／削除 */
   const handleUndoEvent = async () => {
     if (!events.length || !currentSet) return;
     await handleDeleteSpecificEvent(events[0].id, false);
@@ -458,6 +478,7 @@ export default function MatchPage() {
     setIsEditModalOpen(true);
     setIsAllEventsModalOpen(false);
   };
+
   const handleCloseEditModal = () => { setEditingEvent(null); setIsEditModalOpen(false); };
 
   const recomputeScores = (docs: QueryDocumentSnapshot<EventDoc>[], excludeId?: string, override?: { id: string; action: string; result: string }) => {
@@ -567,9 +588,12 @@ export default function MatchPage() {
     /得点/.test(r) ? "bg-green-600" : /成功|Aパス|Bパス/.test(r) ? "bg-sky-600" : "bg-red-600";
 
   /** 早期リターン */
-  if (loading) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合データを読み込んでいます...</p></div>;
-  if (error)   return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></div>;
-  if (!match)  return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合が見つかりません。</p></div>;
+  if (loading)
+    return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合データを読み込んでいます...</p></div>;
+  if (error)
+    return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></div>;
+  if (!match)
+    return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合が見つかりません。</p></div>;
 
   /** JSX */
   return (
@@ -709,7 +733,7 @@ export default function MatchPage() {
         )}
       </div>
 
-      {/* Roster Modal */}
+      {/* ===== Roster Modal ===== */}
       {isRosterModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
           <div className="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-2xl">
@@ -720,7 +744,7 @@ export default function MatchPage() {
                   ? `Set ${currentSet.setNumber} のロスターを編集`
                   : "スターティングメンバー選択"}
             </h2>
-            {isPreparingNextSet && <p className="mb-4 text-sm text-gray-600">直前のロスターを引き継いでいます。必要に応じてポジションを調整して「セット開始」を押してください。</p>}
+            {isPreparingNextSet && <p className="mb-4 text-sm text-gray-600">直前のロスターを引き継いでいます。必要に応じて調整して「セット開始」を押してください。</p>}
 
             <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-4">
               {players.map(p => (
@@ -783,7 +807,7 @@ export default function MatchPage() {
         </div>
       )}
 
-      {/* Action Modal */}
+      {/* ===== Action Modal ===== */}
       {isActionModalOpen && selectedPlayer && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
           <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
@@ -810,7 +834,7 @@ export default function MatchPage() {
         </div>
       )}
 
-      {/* Edit Modal */}
+      {/* ===== Edit Modal ===== */}
       {isEditModalOpen && editingEvent && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
           <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
@@ -858,7 +882,7 @@ export default function MatchPage() {
         </div>
       )}
 
-      {/* 全履歴モーダル */}
+      {/* ===== 全履歴モーダル ===== */}
       {isAllEventsModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
           <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl">
@@ -895,7 +919,7 @@ export default function MatchPage() {
         </div>
       )}
 
-      {/* 交代モーダル */}
+      {/* ===== 交代モーダル ===== */}
       {isSubModalOpen && currentSet && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
           <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
