@@ -41,7 +41,7 @@ interface SetDoc {
   updatedAt?: Timestamp | ServerTS;
 }
 
-type ActionType = "サーブ" | "アタック" | "ブロック" | "ディグ" | "レセプション";
+type ActionType = "サーブ" | "スパイク" | "ブロック" | "ディグ" | "レセプション";
 
 interface EventDoc {
   action: ActionType | string;
@@ -104,7 +104,7 @@ const eventConverter  = makeConverter<EventDoc>();
 const POSITIONS = ["S", "OH", "OP", "MB", "L", "SUB"] as const;
 const ACTIONS = {
   SERVE: "サーブ",
-  ATTACK: "アタック",
+  SPIKE: "スパイク",
   BLOCK: "ブロック",
   DIG: "ディグ",
   RECEPTION: "レセプション",
@@ -112,7 +112,7 @@ const ACTIONS = {
 
 const RESULTS: Record<ActionType, string[]> = {
   サーブ: ["得点", "成功", "失点"],
-  アタック: ["得点", "成功", "失点"],
+  スパイク: ["得点", "成功", "失点"],
   ブロック: ["得点", "成功", "失点"],
   ディグ: ["成功", "失敗"],
   レセプション: ["Aパス", "Bパス", "Cパス", "失点"],
@@ -595,7 +595,7 @@ export default function MatchPage() {
   }, [currentSet, players]);
 
   const getActionButtonClass = (a: ActionType) =>
-    /アタック|サーブ|ブロック/.test(a) ? "bg-blue-600 hover:bg-blue-700" : "bg-teal-600 hover:bg-teal-700";
+    /スパイク|サーブ|ブロック/.test(a) ? "bg-blue-600 hover:bg-blue-700" : "bg-teal-600 hover:bg-teal-700";
   const getResultButtonClass = (r: string) =>
     /得点/.test(r) ? "bg-green-600" : /成功|Aパス|Bパス/.test(r) ? "bg-sky-600" : "bg-red-600";
 
