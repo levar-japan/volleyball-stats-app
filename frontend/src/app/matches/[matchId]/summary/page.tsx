@@ -182,46 +182,26 @@ export default function SummaryPage() {
             <thead className="text-xs text-gray-800 uppercase bg-gray-100">
               <tr>
                 <th scope="col" className="px-4 py-3 sticky left-0 bg-gray-100 z-10">選手名</th>
-
+                
                 <th scope="col" className="px-4 py-3 text-center">
-                  <span className="group relative">
-                    サーブ効果率
-                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2 pointer-events-none">
-                      (得点 / 成功 / 失点 (総数))
-                    </span>}
-                  </span>
+                  サーブ効果率
+                  {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(得点/成功/失点 (総数))</span>}
                 </th>
                 <th scope="col" className="px-4 py-3 text-center">
-                   <span className="group relative">
-                    アタック決定率
-                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2 pointer-events-none">
-                      (得点 / 成功 / 失点 (総数))
-                    </span>}
-                  </span>
+                  アタック決定率
+                  {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(得点/成功/失点 (総数))</span>}
                 </th>
                 <th scope="col" className="px-4 py-3 text-center">
-                   <span className="group relative">
-                    ブロック決定率
-                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2 pointer-events-none">
-                      (得点 / 成功 / 失点 (総数))
-                    </span>}
-                  </span>
+                  ブロック決定率
+                  {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(得点/成功/失点 (総数))</span>}
                 </th>
                 <th scope="col" className="px-4 py-3 text-center">
-                   <span className="group relative">
-                    レセプション成功率
-                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2 pointer-events-none">
-                      (Aパス / Bパス / Cパス (総数))
-                    </span>}
-                  </span>
+                  レセプション成功率
+                  {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(Aパス/Bパス/Cパス (総数))</span>}
                 </th>
                 <th scope="col" className="px-4 py-3 text-center">
-                   <span className="group relative">
-                    ディグ成功率
-                    {viewMode === 'count' && <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block w-max bg-gray-700 text-white text-xs rounded py-1 px-2 pointer-events-none">
-                      (成功 / 失敗 (総数))
-                    </span>}
-                  </span>
+                  ディグ成功率
+                  {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(成功/失敗 (総数))</span>}
                 </th>
               </tr>
             </thead>
