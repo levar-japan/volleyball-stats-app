@@ -41,11 +41,10 @@ interface SetDoc {
   updatedAt?: Timestamp | ServerTS;
 }
 
-type ActionKey = "SERVE" | "SPIKE" | "BLOCK" | "DIG" | "RECEPTION" | "TOSS_MISS";
 type ActionType = "サーブ" | "スパイク" | "ブロック" | "ディグ" | "レセプション" | "トスミス";
 
 interface EventDoc {
-  action: ActionKey | string;
+  action: ActionType | string;
   result: string;
   playerId: string | null;
   playerName: string;
@@ -64,7 +63,7 @@ interface Match  extends MatchDoc  { id: string; }
 interface Set    extends SetDoc    { id: string; }
 interface Event {
   id: string;
-  action: ActionKey | string;
+  action: ActionType | string;
   result: string;
   playerId: string | null;
   playerName: string;
@@ -73,8 +72,7 @@ interface Event {
   ourScore_at_event?: number;
   opponentScore_at_event?: number;
 }
-interface EditingEvent { id: string; player: Player; action: ActionKey; result: string; }
-
+interface EditingEvent { id: string; player: Player; action: ActionType; result: string; }
 
 /** ================================
  *  Firestore Data Converter
@@ -104,32 +102,28 @@ const eventConverter  = makeConverter<EventDoc>();
  *  定数
  *  ================================ */
 const POSITIONS = ["S", "OH", "OP", "MB", "L", "SUB"] as const;
+const ACTIONS = {
+  SERVE: "サーブ",
+  SPIKE: "スパイク",
+  BLOCK: "ブロック",
+  DIG: "ディグ",
+  RECEPTION: "レセプション",
+  TOSS_MISS: "トスミス",
+} as const;
 
-const QUICK_ACTIONS = [
-  { label: "アタック得点", action: "SPIKE", result: "得点", color: "bg-green-600" },
-  { label: "アタック失点", action: "SPIKE", result: "失点", color: "bg-red-600" },
-  { label: "サーブ得点", action: "SERVE", result: "得点", color: "bg-green-600" },
-  { label: "サーブ失点", action: "SERVE", result: "失点", color: "bg-red-600" },
-  { label: "ブロック得点", action: "BLOCK", result: "得点", color: "bg-blue-600" },
-  { label: "レセプション成功 (A)", action: "RECEPTION", result: "Aパス", color: "bg-sky-500" },
-  { label: "レセプション失点", action: "RECEPTION", result: "失点", color: "bg-red-600" },
-  { label: "ディグ成功", action: "DIG", result: "成功", color: "bg-teal-500" },
-] as const;
+const RESULTS: Record<ActionType, string[]> = {
+  サーブ: ["得点", "成功", "失点"],
+  スパイク: ["得点", "成功", "失点"],
+  ブロック: ["得点", "成功", "失点"],
+  ディグ: ["成功", "失敗"],
+  レセプション: ["Aパス", "Bパス", "Cパス", "失点"],
+  トスミス: [],
+};
 
 const TEAM_ACTIONS = {
   OPPONENT_ERROR: "相手のミス（自チーム得点）",
   OUR_ERROR: "こちらのミス（相手チーム失点）",
 } as const;
-
-// ▼▼▼ 編集モーダル用に、古い形式の定数も残します ▼▼▼
-const ACTION_DEFINITIONS: Record<ActionKey, { label: ActionType; results: string[] }> = {
-  SERVE:     { label: "サーブ",       results: ["得点", "成功", "失点"] },
-  SPIKE:     { label: "スパイク",     results: ["得点", "成功", "失点"] },
-  BLOCK:     { label: "ブロック",     results: ["得点", "成功", "失点"] },
-  DIG:       { label: "ディグ",       results: ["成功", "失敗"] },
-  RECEPTION: { label: "レセプション", results: ["Aパス", "Bパス", "Cパス", "失点"] },
-  TOSS_MISS: { label: "トスミス",     results: ["ミス"] },
-};
 
 /** ================================
  *  ヘルパー
@@ -155,13 +149,17 @@ export default function MatchPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeSet, setActiveSet] = useState<Set | null>(null);
   const [viewingSetId, setViewingSetId] = useState<string | null>(null);
-  const currentSet = useMemo(() => (viewingSetId ? sets.find(s => s.id === viewingSetId) ?? null : null), [sets, viewingSetId]);
+  const currentSet = useMemo(
+    () => (viewingSetId ? sets.find(s => s.id === viewingSetId) ?? null : null),
+    [sets, viewingSetId]
+  );
   const [isPreparingNextSet, setIsPreparingNextSet] = useState(false);
   const [nextSetNumberPreview, setNextSetNumberPreview] = useState<number | null>(null);
   const [isRosterModalOpen, setIsRosterModalOpen] = useState(false);
   const [roster, setRoster] = useState<Map<string, RosterPlayer>>(new Map());
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<RosterPlayer | null>(null);
+  const [selectedAction, setSelectedAction] = useState<ActionType | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EditingEvent | null>(null);
   const [isAllEventsModalOpen, setIsAllEventsModalOpen] = useState(false);
@@ -176,10 +174,14 @@ export default function MatchPage() {
     const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`).withConverter(matchConverter);
     const playersRef = collection(db, `teams/${teamId}/players`).withConverter(playerConverter);
     setLoading(true);
-    const unmatch = onSnapshot(matchRef, (docSnap) => {
-      if (docSnap.exists()) setMatch({ id: docSnap.id, ...docSnap.data() } as Match);
-      else setError("試合が見つかりません。");
-    }, () => setError("試合情報の取得に失敗しました。"));
+    const unmatch = onSnapshot(
+      matchRef,
+      (docSnap) => {
+        if (docSnap.exists()) setMatch({ id: docSnap.id, ...docSnap.data() } as Match);
+        else setError("試合が見つかりません。");
+      },
+      () => setError("試合情報の取得に失敗しました。")
+    );
     getDocs(playersRef)
       .then((ps) => setPlayers(ps.docs.map(d => withId(d)) as Player[]))
       .catch(() => setError("選手の読み込みに失敗しました。"))
@@ -193,20 +195,24 @@ export default function MatchPage() {
     const setsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets`).withConverter(setConverter);
     const qy = query(setsRef, orderBy("setNumber", "asc"));
     let isInitial = true;
-    const unsets = onSnapshot(qy, (snapshot) => {
-      const list = snapshot.docs.map(d => withId(d)) as Set[];
-      setSets(list);
-      const ongoing = list.find(s => s.status === "ongoing") ?? null;
-      setActiveSet(ongoing);
-      if (isInitial) {
-        isInitial = false;
-        const initial = ongoing ?? (list.length ? list[list.length - 1] : null);
-        setViewingSetId(initial?.id ?? null);
-      } else if (viewingSetId && !list.some(s => s.id === viewingSetId)) {
-        const fallback = ongoing ?? (list.length ? list[list.length - 1] : null);
-        setViewingSetId(fallback?.id ?? null);
-      }
-    }, () => setError("セット情報の取得に失敗しました。"));
+    const unsets = onSnapshot(
+      qy,
+      (snapshot) => {
+        const list = snapshot.docs.map(d => withId(d)) as Set[];
+        setSets(list);
+        const ongoing = list.find(s => s.status === "ongoing") ?? null;
+        setActiveSet(ongoing);
+        if (isInitial) {
+          isInitial = false;
+          const initial = ongoing ?? (list.length ? list[list.length - 1] : null);
+          setViewingSetId(initial?.id ?? null);
+        } else if (viewingSetId && !list.some(s => s.id === viewingSetId)) {
+          const fallback = ongoing ?? (list.length ? list[list.length - 1] : null);
+          setViewingSetId(fallback?.id ?? null);
+        }
+      },
+      () => setError("セット情報の取得に失敗しました。")
+    );
     return () => { unsets(); };
   }, [db, teamId, matchId]);
 
@@ -215,7 +221,11 @@ export default function MatchPage() {
     if (!db || !teamId || !matchId || !currentSet?.id) { setEvents([]); return; }
     const eventsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}/events`).withConverter(eventConverter);
     const qy = query(eventsRef, orderBy("createdAt", "desc"));
-    const unevents = onSnapshot(qy, (snapshot) => setEvents(snapshot.docs.map(d => withId(d)) as Event[]), () => setError("プレー履歴の取得に失敗しました。"));
+    const unevents = onSnapshot(
+      qy,
+      (snapshot) => setEvents(snapshot.docs.map(d => withId(d)) as Event[]),
+      () => setError("プレー履歴の取得に失敗しました。")
+    );
     return () => { unevents(); };
   }, [db, teamId, matchId, currentSet?.id]);
 
@@ -343,11 +353,13 @@ export default function MatchPage() {
 
   /** 記録モーダル */
   const handlePlayerTileClick = (player: RosterPlayer) => { setSelectedPlayer(player); setIsActionModalOpen(true); };
-  const handleCloseActionModal = () => setSelectedPlayer(null);
+  const handleCloseActionModal = () => { setSelectedPlayer(null); setSelectedAction(null); setIsActionModalOpen(false); };
 
   /** イベント記録（個人・スコア変動あり） */
-  const handleRecordEvent = async (actionToRecord: string, result: string) => {
-    if (!db || !teamId || !matchId || !currentSet || !selectedPlayer || isProcessingEvent) return;
+  const handleRecordEvent = async (result: string, actionKey?: keyof typeof ACTIONS) => {
+    const action = actionKey || selectedAction;
+    if (!db || !teamId || !matchId || !currentSet || !selectedPlayer || !action || isProcessingEvent) return;
+    const actionToRecord = actionKey || Object.keys(ACTIONS).find(key => ACTIONS[key as keyof typeof ACTIONS] === action) || 'UNKNOWN';
     setIsProcessingEvent(true);
     try {
       const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`).withConverter(setConverter);
@@ -425,7 +437,7 @@ export default function MatchPage() {
   };
   
   /** イベント記録（スコア変動なしのミス専用） */
-  const handleRecordSimpleMiss = async (actionKey: ActionKey) => {
+  const handleRecordSimpleMiss = async (actionKey: keyof typeof ACTIONS) => {
     if (!db || !teamId || !matchId || !currentSet || !selectedPlayer || isProcessingEvent) return;
     setIsProcessingEvent(true);
     try {
@@ -458,13 +470,13 @@ export default function MatchPage() {
     await handleDeleteSpecificEvent(events[0].id, false);
   };
   const handleOpenEditModal = (event: Event) => {
-    if (!event.playerId || !ACTION_DEFINITIONS[event.action as ActionKey]) {
+    if (!event.playerId || !Object.values(ACTIONS).includes(event.action as ActionType)) {
       alert("チームに関するプレーは、ここから編集できません。");
       return;
     }
     const player = players.find(p => p.id === event.playerId);
     if (!player) { setError("編集対象の選手が見つかりません。"); return; }
-    setEditingEvent({ id: event.id, player, action: event.action as ActionKey, result: event.result });
+    setEditingEvent({ id: event.id, player, action: event.action as ActionType, result: event.result });
     setIsEditModalOpen(true);
     setIsAllEventsModalOpen(false);
   };
@@ -502,12 +514,18 @@ export default function MatchPage() {
       setError("プレーの削除に失敗しました。");
     }
   };
+
+  // ▼▼▼ この関数が修正箇所です ▼▼▼
   const handleUpdateEvent = async () => {
     if (!db || !teamId || !matchId || !currentSet || !editingEvent) return;
-    const actionToRecord = editingEvent.action; // 編集時はすでにキーになっている
+
+    // 日本語のaction（例: "スパイク"）を英語キー（例: "SPIKE"）に変換
+    const actionToRecord = Object.keys(ACTIONS).find(key => ACTIONS[key as keyof typeof ACTIONS] === editingEvent.action) || 'UNKNOWN';
+
     const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`).withConverter(setConverter);
     const eventsRef = collection(setRef, "events").withConverter(eventConverter);
     const eventRef = doc(eventsRef, editingEvent.id);
+
     try {
       await runTransaction(db, async (t) => {
         const all = await getDocs(query(eventsRef, orderBy("createdAt", "asc")));
@@ -517,12 +535,13 @@ export default function MatchPage() {
         t.update(eventRef, {
           playerId: editingEvent.player.id,
           playerName: editingEvent.player.displayName,
-          action: actionToRecord,
+          action: actionToRecord, // 英語キーで更新
           result: editingEvent.result,
           updatedAt: serverTimestamp(),
         });
         t.update(setRef, { ourScore: our, opponentScore: opp, updatedAt: serverTimestamp() });
       });
+
       handleCloseEditModal();
     } catch (e) {
       console.error(e);
@@ -531,6 +550,8 @@ export default function MatchPage() {
   };
 
   /** 交代 */
+  const openAllEventsModal = () => setIsAllEventsModalOpen(true);
+  const closeAllEventsModal = () => setIsAllEventsModalOpen(false);
   const openSubModal  = () => { setPlayerInId(""); setPlayerOutId(""); setIsSubModalOpen(true); };
   const closeSubModal = () => setIsSubModalOpen(false);
   const handleSubstitutePlayer = async () => {
@@ -559,6 +580,10 @@ export default function MatchPage() {
     const onCourt = new Set(currentSet.roster.map(p => p.playerId));
     return players.filter(p => !onCourt.has(p.id));
   }, [currentSet, players]);
+  const getActionButtonClass = (a: ActionType) =>
+    /スパイク|サーブ|ブロック/.test(a) ? "bg-blue-600 hover:bg-blue-700" : "bg-teal-600 hover:bg-teal-700";
+  const getResultButtonClass = (r: string) =>
+    /得点/.test(r) ? "bg-green-600" : /成功|Aパス|Bパス/.test(r) ? "bg-sky-600" : "bg-red-600";
 
   /** 早期リターン */
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合データを読み込んでいます...</p></div>;
@@ -641,7 +666,7 @@ export default function MatchPage() {
               <ul className="space-y-3">
                 {events.map(event => (
                   <li key={event.id} className="p-3 border-b">
-                    <p className="font-semibold text-base text-gray-800">{event.playerName}: <span className="font-medium text-gray-700">{ACTION_DEFINITIONS[event.action as ActionKey]?.label || event.action} - {event.result || "N/A"}</span></p>
+                    <p className="font-semibold text-base text-gray-800">{event.playerName}: <span className="font-medium text-gray-700">{event.action} - {event.result || "N/A"}</span></p>
                     <p className="text-sm text-gray-600 mt-1">{toDateSafe(event.createdAt)?.toLocaleTimeString("ja-JP", timeFormatOptions) ?? ""}</p>
                   </li>
                 ))}
@@ -712,16 +737,26 @@ export default function MatchPage() {
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
           <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
             <h2 className="text-2xl font-bold mb-6 text-gray-900">{selectedPlayer.displayName}のプレー</h2>
-            <div className="grid grid-cols-2 gap-3">
-              {(selectedPlayer.position === 'L' ? QUICK_ACTIONS.filter(a => a.action === 'RECEPTION' || a.action === 'DIG') : QUICK_ACTIONS).map(item => (
-                <button key={item.label} onClick={() => handleRecordEvent(item.action, item.result)} disabled={isProcessingEvent} className={`p-4 rounded-md font-bold text-lg text-white shadow-md ${item.color} hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed`}>
-                  {isProcessingEvent ? '記録中...' : item.label}
-                </button>
-              ))}
-              {selectedPlayer.position === 'S' && (
-                  <button onClick={() => handleRecordSimpleMiss("TOSS_MISS")} disabled={isProcessingEvent} className="p-4 rounded-md font-bold text-lg text-white shadow-md bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400">{isProcessingEvent ? '記録中...' : 'トスミス'}</button>
-              )}
-            </div>
+            {!selectedAction ? (
+              <div className="grid grid-cols-2 gap-4">
+                {(selectedPlayer.position === 'L' ? Object.values(ACTIONS).filter(a => a === 'レセプション' || a === 'ディグ') : Object.values(ACTIONS).filter(a => a !== 'トスミス')).map(a => (
+                  <button key={a} onClick={() => setSelectedAction(a as ActionType)} className={`p-4 rounded-md font-bold text-lg text-white shadow-md ${getActionButtonClass(a as ActionType)}`}>{a}</button>
+                ))}
+                {selectedPlayer.position === 'S' && (
+                  <button onClick={() => handleRecordSimpleMiss("TOSS_MISS")} disabled={isProcessingEvent} className="col-span-2 p-4 rounded-md font-bold text-lg text-white shadow-md bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400">{isProcessingEvent ? '記録中...' : 'トスミス'}</button>
+                )}
+              </div>
+            ) : (
+              <div>
+                <h3 className="text-xl font-semibold mb-4 text-gray-800">{selectedAction}</h3>
+                <div className="flex flex-col gap-3">
+                  {RESULTS[selectedAction].map(r => (
+                    <button key={r} onClick={() => handleRecordEvent(r)} disabled={isProcessingEvent} className={`p-4 rounded-md font-bold text-lg text-white shadow-md ${getResultButtonClass(r)} hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed`}>{isProcessingEvent ? '記録中...' : r}</button>
+                  ))}
+                </div>
+                <button onClick={() => setSelectedAction(null)} className="mt-6 text-sm text-gray-700 hover:underline">← プレー選択に戻る</button>
+              </div>
+            )}
             <button onClick={handleCloseActionModal} className="w-full mt-8 px-4 py-3 bg-gray-500 text-white font-bold rounded-md hover:bg-gray-600">閉じる</button>
           </div>
         </div>
@@ -738,15 +773,11 @@ export default function MatchPage() {
               </div>
               <div>
                 <label className="block text-base font-medium text-gray-700">プレー</label>
-                <select value={editingEvent.action} onChange={(e) => setEditingEvent({ ...editingEvent, action: e.target.value as ActionKey, result: ACTION_DEFINITIONS[e.target.value as ActionKey].results[0] })} className="w-full mt-1 border p-3 rounded-md text-base">
-                  {Object.entries(ACTION_DEFINITIONS).map(([key, { label }]) => <option key={key} value={key}>{label}</option>)}
-                </select>
+                <select value={editingEvent.action} onChange={(e) => setEditingEvent({ ...editingEvent, action: e.target.value as ActionType, result: RESULTS[e.target.value as ActionType][0] })} className="w-full mt-1 border p-3 rounded-md text-base">{Object.values(ACTIONS).map(a => <option key={a} value={a}>{a}</option>)}</select>
               </div>
               <div>
                 <label className="block text-base font-medium text-gray-700">結果</label>
-                <select value={editingEvent.result} onChange={(e) => setEditingEvent({ ...editingEvent, result: e.target.value })} className="w-full mt-1 border p-3 rounded-md text-base">
-                  {ACTION_DEFINITIONS[editingEvent.action].results.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
+                <select value={editingEvent.result} onChange={(e) => setEditingEvent({ ...editingEvent, result: e.target.value })} className="w-full mt-1 border p-3 rounded-md text-base">{RESULTS[editingEvent.action].map(r => <option key={r} value={r}>{r}</option>)}</select>
               </div>
             </div>
             <div className="flex justify-between items-center mt-8">
@@ -765,14 +796,14 @@ export default function MatchPage() {
           <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-2xl font-bold text-gray-900">Set {currentSet?.setNumber} の全プレー履歴</h2>
-              <button onClick={() => setIsAllEventsModalOpen(false)} className="text-3xl font-light text-gray-700 hover:text-black">&times;</button>
+              <button onClick={closeAllEventsModal} className="text-3xl font-light text-gray-700 hover:text-black">&times;</button>
             </div>
             <div className="max-h-[70vh] overflow-y-auto">
               <ul className="divide-y divide-gray-200">
                 {events.map(event => (
                   <li key={event.id} className="py-4 px-2 flex justify-between items-center">
                     <div>
-                      <p className="text-base font-medium text-gray-800">{event.playerName}: <span className="font-normal text-gray-700">{ACTION_DEFINITIONS[event.action as ActionKey]?.label || event.action} - {event.result || "N/A"}</span></p>
+                      <p className="text-base font-medium text-gray-800">{event.playerName}: <span className="font-normal text-gray-700">{event.action} - {event.result || "N/A"}</span></p>
                       <div className="flex items-center mt-1">
                         <p className="text-sm text-gray-600">{event.createdAt?.toDate().toLocaleTimeString("ja-JP", timeFormatOptions)}</p>
                         {event.ourScore_at_event != null && event.opponentScore_at_event != null && (
