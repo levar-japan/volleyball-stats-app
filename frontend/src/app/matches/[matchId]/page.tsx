@@ -185,6 +185,7 @@ export default function MatchPage() {
   }, [db, matchId, teamInfo]);
 
   /** セット一覧購読 & viewingSet 決定 */
+  /** セット一覧購読 & viewingSet 決定 */
   useEffect(() => {
     if (!teamInfo?.id || !matchId) return;
     const teamId = teamInfo.id;
@@ -195,25 +196,33 @@ export default function MatchPage() {
       const setsData = snapshot.docs.map(d => withId(d)) as Set[];
       setSets(setsData);
 
-      // 準備中は viewingSet を自動更新しない（Set1のロスター編集に戻るのを防止）
-      if (isPreparingNextSet) return;
-
       const ongoingSet = setsData.find(s => s.status === 'ongoing') || null;
       setActiveSet(ongoingSet);
 
+      // ▼▼▼ このブロックを変更しました ▼▼▼
+      // viewingSetの自動切り替えロジック
+      // 1. 次セット準備中は、何もしない
+      if (isPreparingNextSet) {
+        return;
+      }
+      // 2. まだ何も表示されていないか、表示中のセットが削除された場合のみ自動選択
       if (!viewingSet || !setsData.some(s => s.id === viewingSet.id)) {
         if (ongoingSet) {
-          setViewingSet(ongoingSet); // 進行中のセットがあればそれを表示
+          setViewingSet(ongoingSet);
         } else if (setsData.length > 0) {
-          setViewingSet(setsData[setsData.length - 1]); // なければ最後のセットを表示
+          setViewingSet(setsData[setsData.length - 1]);
+        } else {
+          setViewingSet(null);
         }
       }
+      // ▲▲▲ このブロックを変更しました ▲▲▲
     }, (err) => {
       console.error("セット情報の取得に失敗:", err);
       setError("セット情報の取得に失敗しました。");
     });
     return () => unsubscribe();
-  }, [teamInfo, db, matchId, isPreparingNextSet]);
+  // isPreparingNextSet の後ろに viewingSet を追加
+  }, [teamInfo, db, matchId, isPreparingNextSet, viewingSet]);
 
   /** イベント購読（選択中セット） */
   useEffect(() => {
