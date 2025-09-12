@@ -85,14 +85,14 @@ export default function SummaryPage() {
 
   const stats = useMemo(() => {
     const statsMap = new Map<string, Stats>();
-    players.forEach(p => { statsMap.set(p.id, { serve_total: 0, serve_point: 0, serve_success: 0, serve_miss: 0, spike_total: 0, spike_point: 0, spike_success: 0, spike_miss: 0, block_total: 0, block_point: 0, block_success: 0, block_miss: 0, reception_total: 0, reception_A: 0, reception_B: 0, reception_C: 0, reception_miss: 0, dig_total: 0, dig_success: 0, dig_miss: 0, toss_miss_total: 0 }); });
+    players.forEach(p => { statsMap.set(p.id, { serve_total: 0, serve_point: 0, serve_success: 0, serve_miss: 0, attack_total: 0, attack_point: 0, attack_success: 0, attack_miss: 0, block_total: 0, block_point: 0, block_success: 0, block_miss: 0, reception_total: 0, reception_A: 0, reception_B: 0, reception_C: 0, reception_miss: 0, dig_total: 0, dig_success: 0, dig_miss: 0, toss_miss_total: 0 }); });
     
     for (const event of filteredEvents) {
       if (!event.playerId || !statsMap.has(event.playerId)) continue;
       const playerStats = statsMap.get(event.playerId)!;
       switch (event.action) {
         case "SERVE": playerStats.serve_total++; if (event.result === "得点") playerStats.serve_point++; if (event.result === "成功") playerStats.serve_success++; if (event.result === "失点") playerStats.serve_miss++; break;
-        case "SPIKE": playerStats.spike_total++; if (event.result === "得点") playerStats.spike_point++; if (event.result === "成功") playerStats.spike_success++; if (event.result === "失点") playerStats.spike_miss++; break;
+        case "ATTACK": playerStats.attack_total++; if (event.result === "得点") playerStats.attack_point++; if (event.result === "成功") playerStats.attack_success++; if (event.result === "失点") playerStats.attack_miss++; break;
         case "BLOCK": playerStats.block_total++; if (event.result === "得点") playerStats.block_point++; if (event.result === "成功") playerStats.block_success++; if (event.result === "失点") playerStats.block_miss++; break;
         case "RECEPTION": playerStats.reception_total++; if (event.result === "Aパス") playerStats.reception_A++; if (event.result === "Bパス") playerStats.reception_B++; if (event.result === "Cパス") playerStats.reception_C++; if (event.result === "失点") playerStats.reception_miss++; break;
         case "DIG": playerStats.dig_total++; if (event.result === "成功") playerStats.dig_success++; if (event.result === "失敗") playerStats.dig_miss++; break;
@@ -105,13 +105,11 @@ export default function SummaryPage() {
         const { serve_total, serve_point, serve_success, serve_miss } = s;
         s.serve_success_rate = serve_total > 0 ? ((serve_point * 100 + serve_success * 25 - serve_miss * 25) / serve_total) : 0;
         
-        // ▼▼▼ このブロックが修正箇所です ▼▼▼
-        const { spike_total, spike_point, spike_miss } = s;
-        s.spike_effectiveness_rate = spike_total > 0 ? ((spike_point - spike_miss) / spike_total) * 100 : 0;
+        const { attack_total, attack_point, attack_miss } = s;
+        s.attack_effectiveness_rate = attack_total > 0 ? ((attack_point - attack_miss) / attack_total) * 100 : 0;
         
         const { block_total, block_point, block_miss } = s;
         s.block_effectiveness_rate = block_total > 0 ? ((block_point - block_miss) / block_total) * 100 : 0;
-        // ▲▲▲ 修正ここまで ▲▲▲
 
         const { reception_total, reception_A, reception_B } = s;
         s.reception_success_rate = reception_total > 0 ? ((reception_A * 100 + reception_B * 50) / reception_total) : 0;
@@ -219,7 +217,7 @@ export default function SummaryPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredPlayers.length > 0 ? filteredPlayers.map(player => { const s = stats[player.id]; return (<tr key={player.id} className="bg-white border-b hover:bg-gray-50"><th scope="row" className="px-4 py-4 font-bold text-gray-900 sticky left-0 bg-white z-10">{player.displayName}</th><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.serve_success_rate.toFixed(1)}%` : `${s.serve_point}/${s.serve_success}/${s.serve_miss} (${s.serve_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.spike_effectiveness_rate.toFixed(1)}%` : `${s.spike_point}/${s.spike_success}/${s.spike_miss} (${s.spike_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.block_effectiveness_rate.toFixed(1)}%` : `${s.block_point}/${s.block_success}/${s.block_miss} (${s.block_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.reception_success_rate.toFixed(1)}%` : `${s.reception_A}/${s.reception_B}/${s.reception_C} (${s.reception_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.dig_success_rate.toFixed(1)}%` : `${s.dig_success}/${s.dig_miss} (${s.dig_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'count' ? s.toss_miss_total : '-'}</td></tr>); }) : (<tr><td colSpan={7} className="text-center py-8 text-gray-500">記録されたプレーがありません。</td></tr>)}
+              {filteredPlayers.length > 0 ? filteredPlayers.map(player => { const s = stats[player.id]; return (<tr key={player.id} className="bg-white border-b hover:bg-gray-50"><th scope="row" className="px-4 py-4 font-bold text-gray-900 sticky left-0 bg-white z-10">{player.displayName}</th><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.serve_success_rate.toFixed(1)}%` : `${s.serve_point}/${s.serve_success}/${s.serve_miss} (${s.serve_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.attack_effectiveness_rate.toFixed(1)}%` : `${s.attack_point}/${s.attack_success}/${s.attack_miss} (${s.attack_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.block_effectiveness_rate.toFixed(1)}%` : `${s.block_point}/${s.block_success}/${s.block_miss} (${s.block_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.reception_success_rate.toFixed(1)}%` : `${s.reception_A}/${s.reception_B}/${s.reception_C} (${s.reception_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.dig_success_rate.toFixed(1)}%` : `${s.dig_success}/${s.dig_miss} (${s.dig_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'count' ? s.toss_miss_total : '-'}</td></tr>); }) : (<tr><td colSpan={7} className="text-center py-8 text-gray-500">記録されたプレーがありません。</td></tr>)}
             </tbody>
           </table>
         </div>
