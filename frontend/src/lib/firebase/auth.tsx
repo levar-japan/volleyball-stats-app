@@ -1,8 +1,13 @@
 "use client";
 
-import { User, onAuthStateChanged } from "firebase/auth";
+import { User as FirebaseUser, onAuthStateChanged } from "firebase/auth";
 import { ReactNode, createContext, useContext, useEffect, useState } from "react";
-import { auth } from "./firebase"; // ステップ2で作成したファイルを読み込みます
+import { auth } from "./firebase";
+
+// FirebaseのUser型を拡張して、アプリケーション独自のプロパティを追加
+export interface User extends FirebaseUser {
+  teams?: string[]; // ユーザーが所属するチームIDの配列
+}
 
 type AuthContextType = {
   user: User | null;
@@ -16,10 +21,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      // ユーザーオブジェクトをアプリケーションのUser型にキャスト
+      setUser(firebaseUser as User | null);
       setIsLoading(false);
     });
+
     return () => unsubscribe();
   }, []);
 
