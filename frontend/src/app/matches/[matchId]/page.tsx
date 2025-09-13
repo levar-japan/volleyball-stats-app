@@ -754,7 +754,7 @@ export default function MatchPage() {
               {(
                 longPressMode === 'success' // タップ時（成功系）
                   ? selectedPlayer.position === 'L'
-                      ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG'))
+                      ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG') && !a.result.includes('失点') && !a.result.includes('失敗'))
                       : QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス'))
                   : selectedPlayer.position === 'L' // 長押し時（リベロ）
                     ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG') && !a.result.includes('成功') && !a.result.includes('パス'))
