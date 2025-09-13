@@ -6,6 +6,7 @@ import { useFirebase } from '@/app/FirebaseProvider';
 import { collection, doc, getDocs, query, onSnapshot, orderBy } from 'firebase/firestore';
 
 // --- 型定義 ---
+type ViewMode = 'vleague' | 'effectiveness' | 'count';
 interface Player { id: string; displayName: string; }
 interface Event { id: string; action: string; result: string; playerId: string; setId: string; }
 interface Match { opponent: string; }
@@ -23,7 +24,7 @@ export default function SummaryPage() {
   const [sets, setSets] = useState<Set[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'rate' | 'count'>('rate');
+  const [viewMode, setViewMode] = useState<ViewMode>('vleague');
   const [selectedSetId, setSelectedSetId] = useState<string>('all');
 
   useEffect(() => {
@@ -91,36 +92,51 @@ export default function SummaryPage() {
       if (!event.playerId || !statsMap.has(event.playerId)) continue;
       const playerStats = statsMap.get(event.playerId)!;
       switch (event.action) {
-        case "SERVE": playerStats.serve_total++; if (event.result === "得点") playerStats.serve_point++; if (event.result === "成功") playerStats.serve_success++; if (event.result === "失点") playerStats.serve_miss++; break;
-        case "ATTACK": playerStats.attack_total++; if (event.result === "得点") playerStats.attack_point++; if (event.result === "成功") playerStats.attack_success++; if (event.result === "失点") playerStats.attack_miss++; break;
-        case "BLOCK": playerStats.block_total++; if (event.result === "得点") playerStats.block_point++; if (event.result === "成功") playerStats.block_success++; if (event.result === "失点") playerStats.block_miss++; break;
-        case "RECEPTION": playerStats.reception_total++; if (event.result === "Aパス") playerStats.reception_A++; if (event.result === "Bパス") playerStats.reception_B++; if (event.result === "Cパス") playerStats.reception_C++; if (event.result === "失点") playerStats.reception_miss++; break;
-        case "DIG": playerStats.dig_total++; if (event.result === "成功") playerStats.dig_success++; if (event.result === "失敗") playerStats.dig_miss++; break;
-        case "TOSS_MISS": playerStats.toss_miss_total++; break;
+        case "SERVE": case "サーブ":
+          playerStats.serve_total++; if (event.result === "得点") playerStats.serve_point++; if (event.result === "成功") playerStats.serve_success++; if (event.result === "失点") playerStats.serve_miss++; break;
+        case "ATTACK": case "アタック": case "スパイク":
+          playerStats.attack_total++; if (event.result === "得点") playerStats.attack_point++; if (event.result === "成功") playerStats.attack_success++; if (event.result === "失点") playerStats.attack_miss++; break;
+        case "BLOCK": case "ブロック":
+          playerStats.block_total++; if (event.result === "得点") playerStats.block_point++; if (event.result === "成功") playerStats.block_success++; if (event.result === "失点") playerStats.block_miss++; break;
+        case "RECEPTION": case "レセプション":
+          playerStats.reception_total++; if (event.result === "Aパス") playerStats.reception_A++; if (event.result === "Bパス") playerStats.reception_B++; if (event.result === "Cパス") playerStats.reception_C++; if (event.result === "失点") playerStats.reception_miss++; break;
+        case "DIG": case "ディグ":
+          playerStats.dig_total++; if (event.result === "成功") playerStats.dig_success++; if (event.result === "失敗") playerStats.dig_miss++; break;
+        case "TOSS_MISS": case "トスミス":
+          playerStats.toss_miss_total++; break;
       }
     }
 
     const finalStats: { [id: string]: Stats } = {};
-    statsMap.forEach((s, playerId) => {
-        const { serve_total, serve_point, serve_success, serve_miss } = s;
-        s.serve_success_rate = serve_total > 0 ? ((serve_point * 100 + serve_success * 25 - serve_miss * 25) / serve_total) : 0;
-        
-        const { attack_total, attack_point, attack_miss } = s;
-        s.attack_effectiveness_rate = attack_total > 0 ? ((attack_point - attack_miss) / attack_total) * 100 : 0;
-        
-        const { block_total, block_point, block_miss } = s;
-        s.block_effectiveness_rate = block_total > 0 ? ((block_point - block_miss) / block_total) * 100 : 0;
+    const totalSetsInFilter = selectedSetId === 'all' ? sets.length : 1;
 
+    statsMap.forEach((s, playerId) => {
+        // 全モード共通で計算
+        const { serve_total, serve_point, serve_success, serve_miss } = s;
+        const { attack_total, attack_point, attack_miss } = s;
+        const { block_total, block_point, block_miss } = s;
         const { reception_total, reception_A, reception_B, reception_C, reception_miss } = s;
-        s.reception_success_rate = reception_total > 0 ? ((reception_A * 100 + reception_B * 50 + reception_C * 0 - reception_miss * 100) / reception_total) : 0;
-        
         const { dig_total, dig_success } = s;
+
+        // 1. 効果率
+        s.serve_effectiveness_rate = serve_total > 0 ? ((serve_point * 100 + serve_success * 25 - serve_miss * 25) / serve_total) : 0;
+        s.attack_effectiveness_rate = attack_total > 0 ? ((attack_point - attack_miss) / attack_total) * 100 : 0;
+        s.block_effectiveness_rate = block_total > 0 ? ((block_point - block_miss) / block_total) * 100 : 0;
+        s.reception_effectiveness_rate = reception_total > 0 ? ((reception_A * 100 + reception_B * 50 + reception_C * 0 - reception_miss * 100) / reception_total) : 0;
+        
+        // 2. Vリーグ準拠
+        s.v_attack_decision_rate = attack_total > 0 ? (attack_point / attack_total) * 100 : 0;
+        s.v_block_per_set = totalSetsInFilter > 0 ? (block_point / totalSetsInFilter) : 0;
+        s.v_reception_success_rate = reception_total > 0 ? ((reception_A * 100 + reception_B * 50) / reception_total) : 0;
+
+        // 3. その他
         s.dig_success_rate = dig_total > 0 ? (dig_success / dig_total) * 100 : 0;
+        s.total_points = s.serve_point + s.attack_point + s.block_point;
 
         finalStats[playerId] = s;
     });
     return finalStats;
-  }, [filteredEvents, players]);
+  }, [filteredEvents, players, sets, selectedSetId]);
 
   const filteredPlayers = useMemo(() => {
     return players.filter(p => stats[p.id] && filteredEvents.some(e => e.playerId === p.id));
@@ -159,26 +175,9 @@ export default function SummaryPage() {
               </select>
               
               <div className="flex items-center p-1 bg-gray-200 rounded-lg">
-                <button 
-                  onClick={() => setViewMode('rate')} 
-                  className={`transition-colors duration-200 ease-in-out px-4 py-2 text-sm font-bold rounded-md ${
-                    viewMode === 'rate' 
-                      ? 'bg-white text-blue-600 shadow' 
-                      : 'bg-transparent text-gray-500 hover:bg-white/60'
-                  }`}
-                >
-                  率で表示
-                </button>
-                <button 
-                  onClick={() => setViewMode('count')} 
-                  className={`transition-colors duration-200 ease-in-out px-4 py-2 text-sm font-bold rounded-md ${
-                    viewMode === 'count' 
-                      ? 'bg-white text-blue-600 shadow' 
-                      : 'bg-transparent text-gray-500 hover:bg-white/60'
-                  }`}
-                >
-                  数で表示
-                </button>
+                <button onClick={() => setViewMode('vleague')} className={`transition-colors duration-200 ease-in-out px-3 py-2 text-sm font-bold rounded-md ${viewMode === 'vleague' ? 'bg-white text-blue-600 shadow' : 'bg-transparent text-gray-500 hover:bg-white/60'}`}>Vリーグ</button>
+                <button onClick={() => setViewMode('effectiveness')} className={`transition-colors duration-200 ease-in-out px-3 py-2 text-sm font-bold rounded-md ${viewMode === 'effectiveness' ? 'bg-white text-blue-600 shadow' : 'bg-transparent text-gray-500 hover:bg-white/60'}`}>効果率</button>
+                <button onClick={() => setViewMode('count')} className={`transition-colors duration-200 ease-in-out px-3 py-2 text-sm font-bold rounded-md ${viewMode === 'count' ? 'bg-white text-blue-600 shadow' : 'bg-transparent text-gray-500 hover:bg-white/60'}`}>本数</button>
               </div>
               
               <Link href={`/matches/${matchId}`}><span className="px-4 py-2 bg-blue-600 text-white text-base font-bold rounded-md hover:bg-blue-700">記録/編集</span></Link>
@@ -191,24 +190,33 @@ export default function SummaryPage() {
             <thead className="text-xs text-gray-800 uppercase bg-gray-100">
               <tr>
                 <th scope="col" className="px-4 py-3 sticky left-0 bg-gray-100 z-10">選手名</th>
+                <th scope="col" className="px-4 py-3 text-center">総得点</th>
                 <th scope="col" className="px-4 py-3 text-center">
-                  サーブ効果率
+                  サーブ
+                  {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(得点/成功/失点 (総数))</span>}
+                  {viewMode !== 'count' && <span className="block font-normal normal-case text-gray-600">効果率</span>}
+                </th>
+                <th scope="col" className="px-4 py-3 text-center">
+                  アタック
+                  {viewMode === 'vleague' && <span className="block font-normal normal-case text-gray-600">決定率</span>}
+                  {viewMode === 'effectiveness' && <span className="block font-normal normal-case text-gray-600">効果率</span>}
                   {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(得点/成功/失点 (総数))</span>}
                 </th>
                 <th scope="col" className="px-4 py-3 text-center">
-                  アタック効果率
+                  ブロック
+                  {viewMode === 'vleague' && <span className="block font-normal normal-case text-gray-600">本数/Set</span>}
+                  {viewMode === 'effectiveness' && <span className="block font-normal normal-case text-gray-600">効果率</span>}
                   {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(得点/成功/失点 (総数))</span>}
                 </th>
                 <th scope="col" className="px-4 py-3 text-center">
-                  ブロック効果率
-                  {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(得点/成功/失点 (総数))</span>}
+                  レセプション
+                  {viewMode === 'vleague' && <span className="block font-normal normal-case text-gray-600">成功率</span>}
+                  {viewMode === 'effectiveness' && <span className="block font-normal normal-case text-gray-600">効果率</span>}
+                  {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(A/B/C/失点 (総数))</span>}
                 </th>
                 <th scope="col" className="px-4 py-3 text-center">
-                  レセプション成功率
-                  {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(Aパス/Bパス/Cパス (総数))</span>}
-                </th>
-                <th scope="col" className="px-4 py-3 text-center">
-                  ディグ成功率
+                  ディグ
+                  {viewMode !== 'count' && <span className="block font-normal normal-case text-gray-600">成功率</span>}
                   {viewMode === 'count' && <span className="block font-normal normal-case text-gray-600">(成功/失敗 (総数))</span>}
                 </th>
                 <th scope="col" className="px-4 py-3 text-center">
@@ -217,7 +225,40 @@ export default function SummaryPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredPlayers.length > 0 ? filteredPlayers.map(player => { const s = stats[player.id]; return (<tr key={player.id} className="bg-white border-b hover:bg-gray-50"><th scope="row" className="px-4 py-4 font-bold text-gray-900 sticky left-0 bg-white z-10">{player.displayName}</th><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.serve_success_rate.toFixed(1)}%` : `${s.serve_point}/${s.serve_success}/${s.serve_miss} (${s.serve_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.attack_effectiveness_rate.toFixed(1)}%` : `${s.attack_point}/${s.attack_success}/${s.attack_miss} (${s.attack_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.block_effectiveness_rate.toFixed(1)}%` : `${s.block_point}/${s.block_success}/${s.block_miss} (${s.block_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.reception_success_rate.toFixed(1)}%` : `${s.reception_A}/${s.reception_B}/${s.reception_C} (${s.reception_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'rate' ? `${s.dig_success_rate.toFixed(1)}%` : `${s.dig_success}/${s.dig_miss} (${s.dig_total})`}</td><td className="px-4 py-4 text-center">{viewMode === 'count' ? s.toss_miss_total : '-'}</td></tr>); }) : (<tr><td colSpan={7} className="text-center py-8 text-gray-500">記録されたプレーがありません。</td></tr>)}
+              {filteredPlayers.map(player => {
+                const s = stats[player.id];
+                return (
+                  <tr key={player.id} className="bg-white border-b hover:bg-gray-50">
+                    <th scope="row" className="px-4 py-4 font-bold text-gray-900 sticky left-0 bg-white z-10">{player.displayName}</th>
+                    <td className="px-4 py-4 text-center font-bold text-gray-900">{s.total_points}</td>
+                    {/* サーブ */}
+                    <td className="px-4 py-4 text-center">{viewMode === 'count' ? `${s.serve_point}/${s.serve_success}/${s.serve_miss} (${s.serve_total})` : `${s.serve_effectiveness_rate.toFixed(1)}%`}</td>
+                    {/* アタック */}
+                    <td className="px-4 py-4 text-center">
+                      {viewMode === 'vleague' && `${s.v_attack_decision_rate.toFixed(1)}%`}
+                      {viewMode === 'effectiveness' && `${s.attack_effectiveness_rate.toFixed(1)}%`}
+                      {viewMode === 'count' && `${s.attack_point}/${s.attack_success}/${s.attack_miss} (${s.attack_total})`}
+                    </td>
+                    {/* ブロック */}
+                    <td className="px-4 py-4 text-center">
+                      {viewMode === 'vleague' && s.v_block_per_set.toFixed(2)}
+                      {viewMode === 'effectiveness' && `${s.block_effectiveness_rate.toFixed(1)}%`}
+                      {viewMode === 'count' && `${s.block_point}/${s.block_success}/${s.block_miss} (${s.block_total})`}
+                    </td>
+                    {/* レセプション */}
+                    <td className="px-4 py-4 text-center">
+                      {viewMode === 'vleague' && `${s.v_reception_success_rate.toFixed(1)}%`}
+                      {viewMode === 'effectiveness' && `${s.reception_effectiveness_rate.toFixed(1)}%`}
+                      {viewMode === 'count' && `${s.reception_A}/${s.reception_B}/${s.reception_C}/${s.reception_miss} (${s.reception_total})`}
+                    </td>
+                    {/* ディグ */}
+                    <td className="px-4 py-4 text-center">{viewMode === 'count' ? `${s.dig_success}/${s.dig_miss} (${s.dig_total})` : `${s.dig_success_rate.toFixed(1)}%`}</td>
+                    {/* トスミス */}
+                    <td className="px-4 py-4 text-center">{viewMode === 'count' ? s.toss_miss_total : '-'}</td>
+                  </tr>
+                );
+              })}
+              {filteredPlayers.length === 0 && (<tr><td colSpan={8} className="text-center py-8 text-gray-500">記録されたプレーがありません。</td></tr>)}
             </tbody>
           </table>
         </div>
