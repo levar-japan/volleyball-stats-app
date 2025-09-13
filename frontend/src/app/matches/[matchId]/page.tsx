@@ -105,7 +105,6 @@ const eventConverter  = makeConverter<EventDoc>();
 const POSITIONS = ["S", "OH", "OP", "MB", "L", "SUB"] as const;
 
 const QUICK_ACTIONS = [
-  // 得点 / 失点
   { label: "アタック得点", action: "ATTACK", result: "得点", color: "bg-green-600" },
   { label: "アタック失点", action: "ATTACK", result: "失点", color: "bg-red-600" },
   { label: "サーブ得点", action: "SERVE", result: "得点", color: "bg-green-600" },
@@ -113,7 +112,6 @@ const QUICK_ACTIONS = [
   { label: "ブロック得点", action: "BLOCK", result: "得点", color: "bg-green-600" },
   { label: "ブロック失点", action: "BLOCK", result: "失点", color: "bg-red-600" },
   { label: "レセプション失点", action: "RECEPTION", result: "失点", color: "bg-red-600" },
-  // 成功系
   { label: "アタック成功", action: "ATTACK", result: "成功", color: "bg-blue-600" },
   { label: "サーブ成功", action: "SERVE", result: "成功", color: "bg-blue-600" },
   { label: "ブロック成功", action: "BLOCK", result: "成功", color: "bg-blue-600" },
@@ -354,9 +352,11 @@ export default function MatchPage() {
   /** 記録モーダル */
   const handleCloseActionModal = () => {
     setSelectedPlayer(null);
-    setLongPressMode(null); // この行は削除、またはコメントアウトします
-    setIsActionModalOpen(false); // この行のコメントアウトを解除、または追加します
+    setLongPressMode(null);
+    // setSelectedAction(null); // This state is no longer used for this modal
+    setIsActionModalOpen(false);
   };
+
   /** イベント記録（個人・スコア変動あり） */
   const handleRecordEvent = async (actionToRecord: string, result: string) => {
     if (!db || !teamId || !matchId || !currentSet || !selectedPlayer || isProcessingEvent) return;
@@ -464,24 +464,24 @@ export default function MatchPage() {
     }
   };
 
-  /** 長押しイベントハンドラ */
-  const handleTouchStart = (player: RosterPlayer) => {
-    pressTimerRef.current = setTimeout(() => {
-      setSelectedPlayer(player);
-      setLongPressMode(null); // 長押しで通常モード
-      setIsActionModalOpen(true);
-    }, 500);
-  };
-  const handleTouchEnd = (player: RosterPlayer) => {
-    if (pressTimerRef.current) {
-      clearTimeout(pressTimerRef.current);
-      pressTimerRef.current = null;
-      setSelectedPlayer(player);
-      setLongPressMode('success'); // タップで成功モード
-      setIsActionModalOpen(true);
-    }
+  /** タップ／長押しイベントハンドラ（タイマー方式から時間計測方式へ変更） */
+  const pressStartTimeRef = useRef(0);
+  
+  const handlePointerDown = (player: RosterPlayer) => {
+    pressStartTimeRef.current = Date.now();
   };
 
+  const handlePointerUp = (player: RosterPlayer) => {
+    const pressDuration = Date.now() - pressStartTimeRef.current;
+    if (pressDuration < 400) { // 400ms未満ならタップ
+      setLongPressMode('success');
+    } else { // 400ms以上なら長押し
+      setLongPressMode(null);
+    }
+    setSelectedPlayer(player);
+    setIsActionModalOpen(true);
+  };
+  
   /** 取消／編集／削除 */
   const handleUndoEvent = async () => {
     if (!events.length || !currentSet) return;
@@ -655,9 +655,9 @@ export default function MatchPage() {
                   {currentSet.roster.filter(p => p.position !== "SUB").map(player => (
                     <div
                       key={player.playerId}
-                      onTouchStart={() => handleTouchStart(player)}
-                      onTouchEnd={() => handleTouchEnd(player)}
-                      onContextMenu={(e) => { e.preventDefault(); handleTouchEnd(player); }}
+                      onPointerDown={() => handlePointerDown(player)}
+                      onPointerUp={() => handlePointerUp(player)}
+                      onContextMenu={(e) => { e.preventDefault(); handlePointerUp(player); }}
                       className="bg-white p-4 rounded-lg shadow-md text-center cursor-pointer hover:bg-blue-50 select-none"
                     >
                       <p className="font-bold text-xl text-gray-900">{player.displayName}</p>
@@ -751,7 +751,7 @@ export default function MatchPage() {
             <div className="grid grid-cols-2 gap-3">
               {(
                 longPressMode === 'success'
-                  ? QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス'))
+                  ? QUICK_ACTIONS.filter(a => (a.result.includes('成功') || a.result.includes('パス')))
                   : selectedPlayer.position === 'L'
                     ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG') && !a.result.includes('成功') && !a.result.includes('パス'))
                     : QUICK_ACTIONS.filter(a => !a.result.includes('成功') && !a.result.includes('パス'))
@@ -765,7 +765,7 @@ export default function MatchPage() {
                   {isProcessingEvent ? '記録中...' : item.label}
                 </button>
               ))}
-              {selectedPlayer.position === 'S' && longPressMode !== 'success' && (
+              {selectedPlayer.position === 'S' && longPressMode === 'success' && (
                   <button onClick={() => handleRecordSimpleMiss("TOSS_MISS")} disabled={isProcessingEvent} className="p-4 rounded-md font-bold text-lg text-white shadow-md bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400">{isProcessingEvent ? '記録中...' : 'トスミス'}</button>
               )}
             </div>
