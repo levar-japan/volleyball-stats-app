@@ -105,6 +105,7 @@ const eventConverter  = makeConverter<EventDoc>();
 const POSITIONS = ["S", "OH", "OP", "MB", "L", "SUB"] as const;
 
 const QUICK_ACTIONS = [
+  // 得点 / 失点
   { label: "アタック得点", action: "ATTACK", result: "得点", color: "bg-green-600" },
   { label: "アタック失点", action: "ATTACK", result: "失点", color: "bg-red-600" },
   { label: "サーブ得点", action: "SERVE", result: "得点", color: "bg-green-600" },
@@ -112,6 +113,7 @@ const QUICK_ACTIONS = [
   { label: "ブロック得点", action: "BLOCK", result: "得点", color: "bg-green-600" },
   { label: "ブロック失点", action: "BLOCK", result: "失点", color: "bg-red-600" },
   { label: "レセプション失点", action: "RECEPTION", result: "失点", color: "bg-red-600" },
+  { label: "ディグ失敗", action: "DIG", result: "失敗", color: "bg-red-600" }, 
   { label: "アタック成功", action: "ATTACK", result: "成功", color: "bg-blue-600" },
   { label: "サーブ成功", action: "SERVE", result: "成功", color: "bg-blue-600" },
   { label: "ブロック成功", action: "BLOCK", result: "成功", color: "bg-blue-600" },
