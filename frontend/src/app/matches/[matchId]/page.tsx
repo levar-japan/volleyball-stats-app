@@ -30,6 +30,7 @@ type ServerTS = ReturnType<typeof serverTimestamp>;
 interface PlayerDoc { displayName: string; }
 interface MatchDoc  { opponent: string; status: ActionStatus; }
 interface RosterPlayer { playerId: string; displayName: string; position: string; }
+interface TeamInfo { id: string; name: string; }
 
 interface SetDoc {
   setNumber: number;
@@ -105,7 +106,6 @@ const eventConverter  = makeConverter<EventDoc>();
 const POSITIONS = ["S", "OH", "OP", "MB", "L", "SUB"] as const;
 
 const QUICK_ACTIONS = [
-  // 得点 / 失点
   { label: "アタック得点", action: "ATTACK", result: "得点", color: "bg-green-600" },
   { label: "アタック失点", action: "ATTACK", result: "失点", color: "bg-red-600" },
   { label: "サーブ得点", action: "SERVE", result: "得点", color: "bg-green-600" },
@@ -114,15 +114,14 @@ const QUICK_ACTIONS = [
   { label: "ブロック失点", action: "BLOCK", result: "失点", color: "bg-red-600" },
   { label: "レセプション失点", action: "RECEPTION", result: "失点", color: "bg-red-600" },
   { label: "ディグ失敗", action: "DIG", result: "失敗", color: "bg-red-600" },
-  // 成功系
-  { label: "サーブ効果", action: "SERVE", result: "効果", color: "bg-teal-500" },
-  { label: "サーブ成功", action: "SERVE", result: "成功", color: "bg-blue-600" },
   { label: "アタック成功", action: "ATTACK", result: "成功", color: "bg-blue-600" },
+  { label: "サーブ成功", action: "SERVE", result: "成功", color: "bg-blue-600" },
+  { label: "サーブ効果", action: "SERVE", result: "効果", color: "bg-teal-500" },
   { label: "ブロック成功", action: "BLOCK", result: "成功", color: "bg-blue-600" },
+  { label: "ディグ成功", action: "DIG", result: "成功", color: "bg-lime-500" },
   { label: "レセプション A", action: "RECEPTION", result: "Aパス", color: "bg-lime-500" },
   { label: "レセプション B", action: "RECEPTION", result: "Bパス", color: "bg-amber-500" },
   { label: "レセプション C", action: "RECEPTION", result: "Cパス", color: "bg-orange-500" },
-  { label: "ディグ成功", action: "DIG", result: "成功", color: "bg-lime-500" },
 ] as const;
 
 const TEAM_ACTIONS = {
@@ -149,9 +148,11 @@ const toDateSafe = (ts?: Timestamp | ServerTS) => (ts instanceof Timestamp ? ts.
  *  コンポーネント
  *  ================================ */
 export default function MatchPage() {
-  const { db, teamInfo } = useFirebase();
+  const { db } = useFirebase();
   const pathname = usePathname();
   const matchId = pathname.split("/")[2] || "";
+  
+  const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
   const teamId = teamInfo?.id ?? null;
 
   // --- state ---
@@ -181,6 +182,13 @@ export default function MatchPage() {
   type LongPressMode = 'success' | null;
   const [longPressMode, setLongPressMode] = useState<LongPressMode>(null);
   const pressStartTimeRef = useRef(0);
+
+  useEffect(() => {
+    const storedTeam = localStorage.getItem('currentTeam');
+    if (storedTeam) {
+      setTeamInfo(JSON.parse(storedTeam));
+    }
+  }, []);
   
   /** 初期ロード（試合・選手） */
   useEffect(() => {
@@ -354,11 +362,7 @@ export default function MatchPage() {
   };
 
   /** 記録モーダル */
-  const handleCloseActionModal = () => {
-    setSelectedPlayer(null);
-    setLongPressMode(null);
-    setIsActionModalOpen(false);
-  };
+  const handleCloseActionModal = () => { setSelectedPlayer(null); setLongPressMode(null); setIsActionModalOpen(false); };
 
   /** イベント記録（個人・スコア変動あり） */
   const handleRecordEvent = async (actionToRecord: string, result: string) => {
@@ -471,7 +475,6 @@ export default function MatchPage() {
   const handlePointerDown = () => {
     pressStartTimeRef.current = Date.now();
   };
-
   const handlePointerUp = (player: RosterPlayer) => {
     const pressDuration = Date.now() - pressStartTimeRef.current;
     if (pressDuration < 400) {
@@ -656,7 +659,7 @@ export default function MatchPage() {
                   {currentSet.roster.filter(p => p.position !== "SUB").map(player => (
                     <div
                       key={player.playerId}
-                      onPointerDown={() => handlePointerDown()}
+                      onPointerDown={handlePointerDown}
                       onPointerUp={() => handlePointerUp(player)}
                       onContextMenu={(e) => { e.preventDefault(); handlePointerUp(player); }}
                       className="bg-white p-4 rounded-lg shadow-md text-center cursor-pointer hover:bg-blue-50 select-none"
@@ -753,7 +756,7 @@ export default function MatchPage() {
               {(
                 longPressMode === 'success'
                   ? selectedPlayer.position === 'L'
-                      ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG') && !a.result.includes('失点') && !a.result.includes('失敗'))
+                      ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG'))
                       : QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス') || a.result === '効果')
                   : selectedPlayer.position === 'L'
                     ? []
