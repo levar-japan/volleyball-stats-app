@@ -1,18 +1,29 @@
 "use client";
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { useFirebase } from '@/app/FirebaseProvider';
 import { useRouter } from 'next/navigation';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import Link from 'next/link';
 
+interface TeamInfo { id: string; name: string; }
+
 export default function NewMatchPage() {
-  const { db, user, teamInfo } = useFirebase();
+  const { db, user } = useFirebase();
   const router = useRouter();
+  
+  const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
   const [opponent, setOpponent] = useState('');
   const [venue, setVenue] = useState('');
   const [matchDate, setMatchDate] = useState(new Date().toISOString().split('T')[0]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const storedTeam = localStorage.getItem('currentTeam');
+    if (storedTeam) {
+      setTeamInfo(JSON.parse(storedTeam));
+    }
+  }, []);
 
   const handleCreateMatch = async (e: FormEvent) => {
     e.preventDefault();
@@ -23,14 +34,20 @@ export default function NewMatchPage() {
     setLoading(true);
     try {
       await addDoc(collection(db, `teams/${teamInfo.id}/matches`), {
-        opponent: opponent.trim(), venue: venue.trim() || null, matchDate: new Date(matchDate),
-        status: 'scheduled', rules: { sets_to_win: 3, points_to_win_normal: 25, points_to_win_final: 15, deuce: true },
-        createdAt: serverTimestamp(), createdBy: user.uid,
+        opponent: opponent.trim(), 
+        venue: venue.trim() || null, 
+        matchDate: new Date(matchDate),
+        status: 'scheduled', 
+        rules: { sets_to_win: 3, points_to_win_normal: 25, points_to_win_final: 15, deuce: true },
+        createdAt: serverTimestamp(), 
+        createdBy: user.uid,
       });
       alert("新しい試合を作成しました！");
       router.push('/dashboard');
     } catch (err) {
-      console.error(err); setError("試合の作成に失敗しました。"); setLoading(false);
+      console.error(err); 
+      setError("試合の作成に失敗しました。"); 
+      setLoading(false);
     }
   };
 
