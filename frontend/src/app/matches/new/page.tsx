@@ -1,95 +1,84 @@
 "use client";
+import { useState, FormEvent, useEffect } from 'react';
+import { useFirebase } from '@/app/FirebaseProvider';
+import { useRouter } from 'next/navigation';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import Link from 'next/link';
 
-import { Button, Container, Select, TextInput } from "@mantine/core";
-// ↓ この行を修正しました
-import { doc, getDoc, addDoc, serverTimestamp, collection } from "firebase/firestore";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { useAuth } from "@/lib/firebase/auth";
-import { useFirebase } from "@/lib/firebase/firebase-provider";
-// ↓ Teamのimportは不要なので削除しました
+interface TeamInfo { id: string; name: string; }
 
 export default function NewMatchPage() {
-  const { user, isLoading: isAuthLoading } = useAuth();
-  const { db } = useFirebase();
+  const { db, user } = useFirebase();
   const router = useRouter();
-  const [teams, setTeams] = useState<{ label: string; value: string }[]>([]);
-  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
-  const [opponentName, setOpponentName] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  
+  const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
+  const [opponent, setOpponent] = useState('');
+  const [venue, setVenue] = useState('');
+  const [matchDate, setMatchDate] = useState(new Date().toISOString().split('T')[0]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isAuthLoading) {
+    const storedTeam = localStorage.getItem('currentTeam');
+    if (storedTeam) {
+      setTeamInfo(JSON.parse(storedTeam));
+    }
+  }, []);
+
+  const handleCreateMatch = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!opponent.trim() || !teamInfo?.id || !user) {
+      setError("対戦相手は必須です。");
       return;
     }
-    if (!user) {
-      router.push("/signin");
-      return;
-    }
-
-    const fetchUserTeams = async () => {
-      if (user.teams && user.teams.length > 0) {
-        const teamPromises = user.teams.map((teamId: string) => getDoc(doc(db, "teams", teamId)));
-        const teamDocs = await Promise.all(teamPromises);
-        const userTeams = teamDocs.map((doc) => ({
-          label: doc.data()?.name,
-          value: doc.id,
-        }));
-        setTeams(userTeams);
-      }
-      setIsLoading(false);
-    };
-    
-    fetchUserTeams();
-  }, [user, isAuthLoading, db, router]);
-
-  const handleCreateMatch = async () => {
-    if (!selectedTeam || !opponentName.trim() || !user) return;
+    setLoading(true);
     try {
-      // ↓ collection を正しく使うように修正しました
-      await addDoc(collection(db, `teams/${selectedTeam}/matches`), {
-        opponentName: opponentName.trim(),
-        sets: [],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+      await addDoc(collection(db, `teams/${teamInfo.id}/matches`), {
+        opponent: opponent.trim(), 
+        venue: venue.trim() || null, 
+        matchDate: new Date(matchDate),
+        status: 'scheduled', 
+        rules: { sets_to_win: 3, points_to_win_normal: 25, points_to_win_final: 15, deuce: true },
+        createdAt: serverTimestamp(), 
         createdBy: user.uid,
       });
-      router.push(`/teams/${selectedTeam}`);
-    } catch (error) {
-      console.error("Error creating match:", error);
+      alert("新しい試合を作成しました！");
+      router.push('/dashboard');
+    } catch (err) {
+      console.error(err); 
+      setError("試合の作成に失敗しました。"); 
+      setLoading(false);
     }
   };
-  
-  if (isAuthLoading || isLoading) {
-    return <Container>Loading...</Container>;
-  }
-
-  if (!user) {
-    return null;
-  }
 
   return (
-    <Container>
-      <h1>新しい試合を作成</h1>
-      <Select
-        label="チームを選択"
-        placeholder="チームを選んでください"
-        data={teams}
-        value={selectedTeam}
-        onChange={setSelectedTeam}
-        required
-      />
-      <TextInput
-        label="対戦相手名"
-        placeholder="対戦相手の名前を入力"
-        value={opponentName}
-        onChange={(e) => setOpponentName(e.currentTarget.value)}
-        required
-        mt="md"
-      />
-      <Button onClick={handleCreateMatch} mt="xl" disabled={!selectedTeam || !opponentName.trim()}>
-        試合を作成
-      </Button>
-    </Container>
+    <main className="flex min-h-screen flex-col items-center p-8 bg-gray-100">
+      <div className="w-full max-w-lg">
+        <h1 className="text-3xl font-bold text-gray-900 mb-6">新しい試合を作成</h1>
+        <div className="bg-white p-8 rounded-lg shadow-md">
+          <form onSubmit={handleCreateMatch}>
+            <div className="mb-4">
+              <label htmlFor="opponent" className="block text-gray-700 text-sm font-bold mb-2">対戦相手 *</label>
+              <input id="opponent" type="text" value={opponent} onChange={(e) => setOpponent(e.target.value)} className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-900 leading-tight focus:outline-none focus:shadow-outline" required />
+            </div>
+            <div className="mb-4">
+              <label htmlFor="venue" className="block text-gray-700 text-sm font-bold mb-2">会場 (任意)</label>
+              <input id="venue" type="text" value={venue} onChange={(e) => setVenue(e.target.value)} className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-900 leading-tight focus:outline-none focus:shadow-outline" />
+            </div>
+            <div className="mb-6">
+              <label htmlFor="matchDate" className="block text-gray-700 text-sm font-bold mb-2">試合日</label>
+              <input id="matchDate" type="date" value={matchDate} onChange={(e) => setMatchDate(e.target.value)} className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-900 leading-tight focus:outline-none focus:shadow-outline" />
+            </div>
+            {error && <p className="text-red-500 text-xs italic mb-4">{error}</p>}
+            <div className="flex items-center justify-between">
+              <Link href="/dashboard"><span className="inline-block align-baseline font-bold text-sm text-blue-600 hover:text-blue-800">キャンセル</span></Link>
+              <button type="submit" disabled={loading || !teamInfo?.id} className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:bg-gray-400">
+                {loading ? '作成中...' : '試合を作成'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </main>
   );
 }

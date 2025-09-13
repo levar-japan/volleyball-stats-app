@@ -362,7 +362,11 @@ export default function MatchPage() {
   };
 
   /** 記録モーダル */
-  const handleCloseActionModal = () => { setSelectedPlayer(null); setLongPressMode(null); setIsActionModalOpen(false); };
+  const handleCloseActionModal = () => {
+    setSelectedPlayer(null);
+    setLongPressMode(null);
+    setIsActionModalOpen(false);
+  };
 
   /** イベント記録（個人・スコア変動あり） */
   const handleRecordEvent = async (actionToRecord: string, result: string) => {
@@ -756,7 +760,7 @@ export default function MatchPage() {
               {(
                 longPressMode === 'success'
                   ? selectedPlayer.position === 'L'
-                      ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG'))
+                      ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG') && !a.result.includes('失点') && !a.result.includes('失敗'))
                       : QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス') || a.result === '効果')
                   : selectedPlayer.position === 'L'
                     ? []

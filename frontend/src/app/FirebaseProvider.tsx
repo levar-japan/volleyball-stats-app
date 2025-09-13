@@ -2,10 +2,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Auth, User, onAuthStateChanged } from 'firebase/auth';
 import { Firestore } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase/firebase';
+import { auth, db } from '@/lib/firebase';
 import { usePathname, useRouter } from 'next/navigation';
 
-// teamInfoを削除
 interface FirebaseContextType {
   auth: Auth;
   db: Firestore;
@@ -27,21 +26,20 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     });
     return () => unsubscribe();
   }, []);
-  
-  // teamInfoとそれに関連するuseEffectを削除
 
   useEffect(() => {
     if (loading) return;
     const isAuthPage = pathname === '/';
     const isProtectedPage = pathname.startsWith('/dashboard') || pathname.startsWith('/matches');
 
-    // 認証されていないユーザーが保護ページにアクセスしたらトップにリダイレクト
     if (!user && isProtectedPage) {
       router.push('/');
     }
-    // 認証済みのユーザーがトップページにアクセスしたらダッシュボードにリダイレクト
     if (user && isAuthPage) {
-      router.push('/dashboard');
+      const storedTeam = localStorage.getItem('currentTeam');
+      if (storedTeam) {
+        router.push('/dashboard');
+      }
     }
   }, [user, loading, pathname, router]);
 
@@ -53,7 +51,6 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // valueからteamInfo, setTeamInfoを削除
   return (
     <FirebaseContext.Provider value={{ auth, db, user, loading }}>
       {children}
