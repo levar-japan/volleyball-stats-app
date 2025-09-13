@@ -117,6 +117,7 @@ const QUICK_ACTIONS = [
   // 成功系
   { label: "アタック成功", action: "ATTACK", result: "成功", color: "bg-blue-600" },
   { label: "サーブ成功", action: "SERVE", result: "成功", color: "bg-blue-600" },
+  { label: "サーブ効果", action: "SERVE", result: "効果", color: "bg-teal-500" },
   { label: "ブロック成功", action: "BLOCK", result: "成功", color: "bg-blue-600" },
   { label: "ディグ成功", action: "DIG", result: "成功", color: "bg-lime-500" },
   { label: "レセプション A", action: "RECEPTION", result: "Aパス", color: "bg-lime-500" },
@@ -473,9 +474,9 @@ export default function MatchPage() {
 
   const handlePointerUp = (player: RosterPlayer) => {
     const pressDuration = Date.now() - pressStartTimeRef.current;
-    if (pressDuration < 400) { // 400ms未満ならタップ
+    if (pressDuration < 400) {
       setLongPressMode('success');
-    } else { // 400ms以上なら長押し
+    } else {
       setLongPressMode(null);
     }
     setSelectedPlayer(player);
@@ -752,7 +753,7 @@ export default function MatchPage() {
               {(
                 longPressMode === 'success'
                   ? selectedPlayer.position === 'L'
-                      ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG'))
+                      ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG') && !a.result.includes('失点') && !a.result.includes('失敗'))
                       : QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス'))
                   : selectedPlayer.position === 'L'
                     ? []
