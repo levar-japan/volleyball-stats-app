@@ -1,11 +1,10 @@
-// ↓ 1. この行を新しく追加します
 import '@mantine/core/styles.css';
-
 import { MantineProvider } from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
 import { Notifications } from "@mantine/notifications";
 import { AuthProvider } from "@/lib/firebase/auth";
-import "../styles/globals.css";
+// ↓ ここのパスの書き方を修正しました
+import "@/styles/globals.css";
 
 export const metadata = {
   title: "Volleyball Stats App",
@@ -16,7 +15,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ja">
       <body>
-        {/* ↓ 2. 不要な設定を削除し、シンプルにします */}
         <MantineProvider forceColorScheme="light">
           <Notifications />
           <ModalsProvider>
