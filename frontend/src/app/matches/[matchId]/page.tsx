@@ -105,7 +105,7 @@ const eventConverter  = makeConverter<EventDoc>();
 const POSITIONS = ["S", "OH", "OP", "MB", "L", "SUB"] as const;
 
 const QUICK_ACTIONS = [
-  // 得点 (緑) / 失点 (赤)
+  // 得点 / 失点
   { label: "アタック得点", action: "ATTACK", result: "得点", color: "bg-green-600" },
   { label: "アタック失点", action: "ATTACK", result: "失点", color: "bg-red-600" },
   { label: "サーブ得点", action: "SERVE", result: "得点", color: "bg-green-600" },
@@ -113,14 +113,12 @@ const QUICK_ACTIONS = [
   { label: "ブロック得点", action: "BLOCK", result: "得点", color: "bg-green-600" },
   { label: "ブロック失点", action: "BLOCK", result: "失点", color: "bg-red-600" },
   { label: "レセプション失点", action: "RECEPTION", result: "失点", color: "bg-red-600" },
-  // 成功系 (青)
+  // 成功系
   { label: "アタック成功", action: "ATTACK", result: "成功", color: "bg-blue-600" },
   { label: "サーブ成功", action: "SERVE", result: "成功", color: "bg-blue-600" },
   { label: "ブロック成功", action: "BLOCK", result: "成功", color: "bg-blue-600" },
-  // 守備成功 (黄緑)
   { label: "ディグ成功", action: "DIG", result: "成功", color: "bg-lime-500" },
   { label: "レセプション A", action: "RECEPTION", result: "Aパス", color: "bg-lime-500" },
-  // レセプション B/C
   { label: "レセプション B", action: "RECEPTION", result: "Bパス", color: "bg-amber-500" },
   { label: "レセプション C", action: "RECEPTION", result: "Cパス", color: "bg-orange-500" },
 ] as const;
@@ -467,7 +465,7 @@ export default function MatchPage() {
   const handleTouchStart = (player: RosterPlayer) => {
     pressTimerRef.current = setTimeout(() => {
       setSelectedPlayer(player);
-      setLongPressMode('success');
+      setLongPressMode(null); // 長押しで通常モード
       setIsActionModalOpen(true);
     }, 500);
   };
@@ -476,6 +474,7 @@ export default function MatchPage() {
       clearTimeout(pressTimerRef.current);
       pressTimerRef.current = null;
       setSelectedPlayer(player);
+      setLongPressMode('success'); // タップで成功モード
       setIsActionModalOpen(true);
     }
   };
@@ -655,7 +654,7 @@ export default function MatchPage() {
                       key={player.playerId}
                       onTouchStart={() => handleTouchStart(player)}
                       onTouchEnd={() => handleTouchEnd(player)}
-                      onContextMenu={(e) => { e.preventDefault(); handleTouchStart(player); }}
+                      onContextMenu={(e) => { e.preventDefault(); handleTouchEnd(player); }}
                       className="bg-white p-4 rounded-lg shadow-md text-center cursor-pointer hover:bg-blue-50 select-none"
                     >
                       <p className="font-bold text-xl text-gray-900">{player.displayName}</p>
@@ -763,7 +762,7 @@ export default function MatchPage() {
                   {isProcessingEvent ? '記録中...' : item.label}
                 </button>
               ))}
-              {selectedPlayer.position === 'S' && !longPressMode && (
+              {selectedPlayer.position === 'S' && longPressMode !== 'success' && (
                   <button onClick={() => handleRecordSimpleMiss("TOSS_MISS")} disabled={isProcessingEvent} className="p-4 rounded-md font-bold text-lg text-white shadow-md bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400">{isProcessingEvent ? '記録中...' : 'トスミス'}</button>
               )}
             </div>
