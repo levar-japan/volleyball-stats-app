@@ -12,11 +12,15 @@ interface Event { id: string; action: string; result: string; playerId: string; 
 interface Match { opponent: string; }
 interface Set { id: string; setNumber: number; }
 interface Stats { [key: string]: number; }
+interface TeamInfo { id: string; name: string; }
 
 export default function SummaryPage() {
-  const { db, teamInfo } = useFirebase();
+  const { db } = useFirebase();
   const pathname = usePathname();
   const matchId = pathname.split('/')[2] || '';
+
+  const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
+  const teamId = teamInfo?.id;
 
   const [match, setMatch] = useState<Match | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -28,8 +32,15 @@ export default function SummaryPage() {
   const [selectedSetId, setSelectedSetId] = useState<string>('all');
 
   useEffect(() => {
-    if (!db || !matchId || !teamInfo?.id) return;
-    const teamId = teamInfo.id;
+    const storedTeam = localStorage.getItem('currentTeam');
+    if (storedTeam) {
+      setTeamInfo(JSON.parse(storedTeam));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!db || !matchId || !teamId) return;
+    
     setLoading(true);
 
     const fetchPlayers = async () => {
@@ -75,7 +86,7 @@ export default function SummaryPage() {
     });
 
     return () => { matchUnsubscribe(); setsUnsubscribe(); };
-  }, [db, matchId, teamInfo]);
+  }, [db, matchId, teamId]);
 
   const filteredEvents = useMemo(() => {
     if (selectedSetId === 'all') {

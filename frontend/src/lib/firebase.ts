@@ -20,8 +20,8 @@ if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
   try {
     connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
     connectFirestoreEmulator(db, '127.0.0.1', 8080);
-  } catch (_error) { // ← 'error' を '_error' に変更
-    // console.warn("Emulator already connected or failed to connect:", error);
+  } catch (_error) {
+    console.warn("Emulator already connected or failed to connect:", _error);
   }
 }
 
