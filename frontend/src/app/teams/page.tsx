@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Container, List, ThemeIcon, Title } from "@mantine/core";
+import { Container, List, ThemeIcon, Title } from "@mantine/core";
 import { IconCircleDashed } from "@tabler/icons-react";
 import { doc, getDoc } from "firebase/firestore";
 import Link from "next/link";
@@ -18,9 +18,7 @@ export default function TeamsPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (isAuthLoading) {
-      return;
-    }
+    if (isAuthLoading) return;
     if (!user) {
       router.push("/signin");
       return;
@@ -43,25 +41,13 @@ export default function TeamsPage() {
     return <Container>Loading...</Container>;
   }
   
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
 
   return (
     <Container>
       <Title order={1}>チーム一覧</Title>
       {teams.length > 0 ? (
-        <List
-          spacing="xs"
-          size="sm"
-          center
-          icon={
-            <ThemeIcon color="teal" size={24} radius="xl">
-              <IconCircleDashed size="1rem" />
-            </ThemeIcon>
-          }
-          mt="md"
-        >
+        <List spacing="xs" size="sm" center icon={<ThemeIcon color="teal" size={24} radius="xl"><IconCircleDashed size="1rem" /></ThemeIcon>} mt="md">
           {teams.map((team) => (
             <List.Item key={team.id}>
               <Link href={`/teams/${team.id}`}>{team.name}</Link>
@@ -71,9 +57,7 @@ export default function TeamsPage() {
       ) : (
         <p>所属しているチームはありません。</p>
       )}
-      <Button component={Link} href="/teams/new" mt="xl">
-        新しいチームを作成
-      </Button>
+      {/* 「新しいチームを作成」ボタンはここにありません */}
     </Container>
   );
 }
