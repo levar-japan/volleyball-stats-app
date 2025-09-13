@@ -111,8 +111,8 @@ export default function SummaryPage() {
         const { block_total, block_point, block_miss } = s;
         s.block_effectiveness_rate = block_total > 0 ? ((block_point - block_miss) / block_total) * 100 : 0;
 
-        const { reception_total, reception_A, reception_B } = s;
-        s.reception_success_rate = reception_total > 0 ? ((reception_A * 100 + reception_B * 50) / reception_total) : 0;
+        const { reception_total, reception_A, reception_B, reception_C, reception_miss } = s;
+        s.reception_success_rate = reception_total > 0 ? ((reception_A * 100 + reception_B * 50 + reception_C * 0 - reception_miss * 100) / reception_total) : 0;
         
         const { dig_total, dig_success } = s;
         s.dig_success_rate = dig_total > 0 ? (dig_success / dig_total) * 100 : 0;
