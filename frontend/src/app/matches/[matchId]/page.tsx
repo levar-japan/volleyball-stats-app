@@ -751,11 +751,11 @@ export default function MatchPage() {
             <h2 className="text-2xl font-bold mb-6 text-gray-900">{selectedPlayer.displayName}のプレー</h2>
             <div className="grid grid-cols-2 gap-3">
               {(
-                longPressMode === 'success'
+                longPressMode === 'success' // タップ時（成功系）
                   ? selectedPlayer.position === 'L'
                       ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG') && !a.result.includes('失点') && !a.result.includes('失敗'))
-                      : QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス'))
-                  : selectedPlayer.position === 'L'
+                      : QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス') || a.result === '効果')
+                  : selectedPlayer.position === 'L' // 長押し時（リベロ）
                     ? []
                     : QUICK_ACTIONS.filter(a => !a.result.includes('成功') && !a.result.includes('パス'))
               ).map(item => (
