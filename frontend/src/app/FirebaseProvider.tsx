@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Auth, User, onAuthStateChanged } from 'firebase/auth';
 import { Firestore } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase/firebase';
 import { usePathname, useRouter } from 'next/navigation';
 
 // teamInfoを削除
