@@ -113,7 +113,8 @@ const QUICK_ACTIONS = [
   { label: "ブロック得点", action: "BLOCK", result: "得点", color: "bg-green-600" },
   { label: "ブロック失点", action: "BLOCK", result: "失点", color: "bg-red-600" },
   { label: "レセプション失点", action: "RECEPTION", result: "失点", color: "bg-red-600" },
-  { label: "ディグ失敗", action: "DIG", result: "失敗", color: "bg-red-600" }, 
+  { label: "ディグ失敗", action: "DIG", result: "失敗", color: "bg-red-600" },
+  // 成功系
   { label: "アタック成功", action: "ATTACK", result: "成功", color: "bg-blue-600" },
   { label: "サーブ成功", action: "SERVE", result: "成功", color: "bg-blue-600" },
   { label: "ブロック成功", action: "BLOCK", result: "成功", color: "bg-blue-600" },
@@ -129,7 +130,7 @@ const TEAM_ACTIONS = {
 } as const;
 
 const ACTION_DEFINITIONS: Record<ActionKey, { label: ActionType; results: string[] }> = {
-  SERVE:     { label: "サーブ",       results: ["得点", "成功", "失点"] },
+  SERVE:     { label: "サーブ",       results: ["得点", "成功", "効果", "失点"] },
   ATTACK:    { label: "アタック",     results: ["得点", "成功", "失点"] },
   BLOCK:     { label: "ブロック",     results: ["得点", "成功", "失点"] },
   DIG:       { label: "ディグ",       results: ["成功", "失敗"] },
@@ -178,7 +179,7 @@ export default function MatchPage() {
   
   type LongPressMode = 'success' | null;
   const [longPressMode, setLongPressMode] = useState<LongPressMode>(null);
-  const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pressStartTimeRef = useRef(0);
   
   /** 初期ロード（試合・選手） */
   useEffect(() => {
@@ -218,7 +219,7 @@ export default function MatchPage() {
       }
     }, () => setError("セット情報の取得に失敗しました。"));
     return () => { unsets(); };
-  }, [db, teamId, matchId]);
+  }, [db, teamId, matchId, viewingSetId]);
 
   /** イベント購読 */
   useEffect(() => {
@@ -355,7 +356,6 @@ export default function MatchPage() {
   const handleCloseActionModal = () => {
     setSelectedPlayer(null);
     setLongPressMode(null);
-    // setSelectedAction(null); // This state is no longer used for this modal
     setIsActionModalOpen(false);
   };
 
@@ -466,10 +466,8 @@ export default function MatchPage() {
     }
   };
 
-  /** タップ／長押しイベントハンドラ（タイマー方式から時間計測方式へ変更） */
-  const pressStartTimeRef = useRef(0);
-  
-  const handlePointerDown = (player: RosterPlayer) => {
+  /** タップ／長押しイベントハンドラ */
+  const handlePointerDown = () => {
     pressStartTimeRef.current = Date.now();
   };
 
@@ -657,7 +655,7 @@ export default function MatchPage() {
                   {currentSet.roster.filter(p => p.position !== "SUB").map(player => (
                     <div
                       key={player.playerId}
-                      onPointerDown={() => handlePointerDown(player)}
+                      onPointerDown={() => handlePointerDown()}
                       onPointerUp={() => handlePointerUp(player)}
                       onContextMenu={(e) => { e.preventDefault(); handlePointerUp(player); }}
                       className="bg-white p-4 rounded-lg shadow-md text-center cursor-pointer hover:bg-blue-50 select-none"
@@ -752,12 +750,12 @@ export default function MatchPage() {
             <h2 className="text-2xl font-bold mb-6 text-gray-900">{selectedPlayer.displayName}のプレー</h2>
             <div className="grid grid-cols-2 gap-3">
               {(
-                longPressMode === 'success' // タップ時（成功系）
+                longPressMode === 'success'
                   ? selectedPlayer.position === 'L'
-                      ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG') && !a.result.includes('失点') && !a.result.includes('失敗'))
+                      ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG'))
                       : QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス'))
-                  : selectedPlayer.position === 'L' // 長押し時（リベロ）
-                    ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG') && !a.result.includes('成功') && !a.result.includes('パス'))
+                  : selectedPlayer.position === 'L'
+                    ? []
                     : QUICK_ACTIONS.filter(a => !a.result.includes('成功') && !a.result.includes('パス'))
               ).map(item => (
                 <button
