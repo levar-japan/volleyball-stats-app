@@ -2,8 +2,7 @@
 
 import { Button, Container, Stack, Title } from "@mantine/core";
 import Link from "next/link";
-import { useAuth } from "@/lib/firebase/auth";
-
+import { useAuth } from "../lib/firebase/auth";
 export default function Home() {
   const { user, isLoading } = useAuth();
 
