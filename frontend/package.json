@@ -9,6 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@mantine/core": "^8.3.1",
+    "@mantine/form": "^8.3.1",
+    "@mantine/hooks": "^8.3.1",
+    "@mantine/modals": "^8.3.1",
+    "@mantine/notifications": "^8.3.1",
     "firebase": "^12.2.1",
     "next": "15.5.2",
     "react": "19.1.0",
