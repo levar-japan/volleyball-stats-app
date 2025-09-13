@@ -354,8 +354,8 @@ export default function MatchPage() {
   /** 記録モーダル */
   const handleCloseActionModal = () => {
     setSelectedPlayer(null);
-    setLongPressMode(null);
-    setIsActionModalOpen(false);
+    setLongPressMode(null); // この行は削除、またはコメントアウトします
+    setIsActionModalOpen(false); // この行のコメントアウトを解除、または追加します
   };
   /** イベント記録（個人・スコア変動あり） */
   const handleRecordEvent = async (actionToRecord: string, result: string) => {
