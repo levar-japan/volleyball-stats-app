@@ -3,7 +3,6 @@ import { MantineProvider } from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
 import { Notifications } from "@mantine/notifications";
 import { AuthProvider } from "@/lib/firebase/auth";
-// ↓ ここがエラーを解決するための重要な修正点です
 import "@/styles/globals.css";
 
 export const metadata = {
