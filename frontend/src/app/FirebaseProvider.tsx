@@ -5,70 +5,45 @@ import { Firestore } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { usePathname, useRouter } from 'next/navigation';
 
-interface TeamInfo {
-  id: string;
-  name: string;
-}
+// teamInfoを削除
 interface FirebaseContextType {
   auth: Auth;
   db: Firestore;
   user: User | null;
   loading: boolean;
-  teamInfo: TeamInfo | null;
-  setTeamInfo: (team: TeamInfo | null) => void;
 }
 const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined);
 
 export function FirebaseProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [teamInfo, setTeamInfoState] = useState<TeamInfo | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
-      if (user) {
-        try {
-          const storedTeam = localStorage.getItem('currentTeam');
-          if (storedTeam) {
-            setTeamInfoState(JSON.parse(storedTeam));
-          }
-        } catch (e) {
-          console.error("Failed to parse team info from localStorage", e);
-          localStorage.removeItem('currentTeam');
-        }
-      } else {
-        localStorage.removeItem('currentTeam');
-        setTeamInfoState(null);
-      }
       setLoading(false);
     });
     return () => unsubscribe();
   }, []);
   
-  const setTeamInfo = (team: TeamInfo | null) => {
-    if (team) {
-      localStorage.setItem('currentTeam', JSON.stringify(team));
-      setTeamInfoState(team);
-    } else {
-      localStorage.removeItem('currentTeam');
-      setTeamInfoState(null);
-    }
-  };
+  // teamInfoとそれに関連するuseEffectを削除
 
   useEffect(() => {
     if (loading) return;
     const isAuthPage = pathname === '/';
     const isProtectedPage = pathname.startsWith('/dashboard') || pathname.startsWith('/matches');
-    if (user && teamInfo && isAuthPage) {
-      router.push('/dashboard');
-    }
-    if ((!user || !teamInfo) && isProtectedPage) {
+
+    // 認証されていないユーザーが保護ページにアクセスしたらトップにリダイレクト
+    if (!user && isProtectedPage) {
       router.push('/');
     }
-  }, [user, loading, pathname, router, teamInfo]);
+    // 認証済みのユーザーがトップページにアクセスしたらダッシュボードにリダイレクト
+    if (user && isAuthPage) {
+      router.push('/dashboard');
+    }
+  }, [user, loading, pathname, router]);
 
   if (loading) {
     return (
@@ -78,8 +53,9 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // valueからteamInfo, setTeamInfoを削除
   return (
-    <FirebaseContext.Provider value={{ auth, db, user, loading, teamInfo, setTeamInfo }}>
+    <FirebaseContext.Provider value={{ auth, db, user, loading }}>
       {children}
     </FirebaseContext.Provider>
   );
