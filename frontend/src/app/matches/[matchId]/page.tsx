@@ -352,8 +352,11 @@ export default function MatchPage() {
   };
 
   /** 記録モーダル */
-  const handleCloseActionModal = () => { setSelectedPlayer(null); setLongPressMode(null); };
-
+  const handleCloseActionModal = () => {
+    setSelectedPlayer(null);
+    setLongPressMode(null);
+    setIsActionModalOpen(false);
+  };
   /** イベント記録（個人・スコア変動あり） */
   const handleRecordEvent = async (actionToRecord: string, result: string) => {
     if (!db || !teamId || !matchId || !currentSet || !selectedPlayer || isProcessingEvent) return;
