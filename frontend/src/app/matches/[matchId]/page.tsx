@@ -115,14 +115,14 @@ const QUICK_ACTIONS = [
   { label: "レセプション失点", action: "RECEPTION", result: "失点", color: "bg-red-600" },
   { label: "ディグ失敗", action: "DIG", result: "失敗", color: "bg-red-600" },
   // 成功系
-  { label: "アタック成功", action: "ATTACK", result: "成功", color: "bg-blue-600" },
-  { label: "サーブ成功", action: "SERVE", result: "成功", color: "bg-blue-600" },
   { label: "サーブ効果", action: "SERVE", result: "効果", color: "bg-teal-500" },
+  { label: "サーブ成功", action: "SERVE", result: "成功", color: "bg-blue-600" },
+  { label: "アタック成功", action: "ATTACK", result: "成功", color: "bg-blue-600" },
   { label: "ブロック成功", action: "BLOCK", result: "成功", color: "bg-blue-600" },
-  { label: "ディグ成功", action: "DIG", result: "成功", color: "bg-lime-500" },
   { label: "レセプション A", action: "RECEPTION", result: "Aパス", color: "bg-lime-500" },
   { label: "レセプション B", action: "RECEPTION", result: "Bパス", color: "bg-amber-500" },
   { label: "レセプション C", action: "RECEPTION", result: "Cパス", color: "bg-orange-500" },
+  { label: "ディグ成功", action: "DIG", result: "成功", color: "bg-lime-500" },
 ] as const;
 
 const TEAM_ACTIONS = {
@@ -751,13 +751,13 @@ export default function MatchPage() {
             <h2 className="text-2xl font-bold mb-6 text-gray-900">{selectedPlayer.displayName}のプレー</h2>
             <div className="grid grid-cols-2 gap-3">
               {(
-                longPressMode === 'success' // タップ時（成功系）
+                longPressMode === 'success'
                   ? selectedPlayer.position === 'L'
                       ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG') && !a.result.includes('失点') && !a.result.includes('失敗'))
                       : QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス') || a.result === '効果')
-                  : selectedPlayer.position === 'L' // 長押し時（リベロ）
+                  : selectedPlayer.position === 'L'
                     ? []
-                    : QUICK_ACTIONS.filter(a => !a.result.includes('成功') && !a.result.includes('パス'))
+                    : QUICK_ACTIONS.filter(a => !a.result.includes('成功') && !a.result.includes('パス') && a.result !== '効果')
               ).map(item => (
                 <button
                   key={item.label}
