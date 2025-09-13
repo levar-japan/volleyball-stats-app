@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useFirebase } from "@/app/FirebaseProvider";
@@ -105,14 +105,24 @@ const eventConverter  = makeConverter<EventDoc>();
 const POSITIONS = ["S", "OH", "OP", "MB", "L", "SUB"] as const;
 
 const QUICK_ACTIONS = [
+  // 得点 (緑) / 失点 (赤)
   { label: "アタック得点", action: "ATTACK", result: "得点", color: "bg-green-600" },
   { label: "アタック失点", action: "ATTACK", result: "失点", color: "bg-red-600" },
   { label: "サーブ得点", action: "SERVE", result: "得点", color: "bg-green-600" },
   { label: "サーブ失点", action: "SERVE", result: "失点", color: "bg-red-600" },
-  { label: "ブロック得点", action: "BLOCK", result: "得点", color: "bg-blue-600" },
-  { label: "レセプション成功 (A)", action: "RECEPTION", result: "Aパス", color: "bg-sky-500" },
+  { label: "ブロック得点", action: "BLOCK", result: "得点", color: "bg-green-600" },
+  { label: "ブロック失点", action: "BLOCK", result: "失点", color: "bg-red-600" },
   { label: "レセプション失点", action: "RECEPTION", result: "失点", color: "bg-red-600" },
-  { label: "ディグ成功", action: "DIG", result: "成功", color: "bg-teal-500" },
+  // 成功系 (青)
+  { label: "アタック成功", action: "ATTACK", result: "成功", color: "bg-blue-600" },
+  { label: "サーブ成功", action: "SERVE", result: "成功", color: "bg-blue-600" },
+  { label: "ブロック成功", action: "BLOCK", result: "成功", color: "bg-blue-600" },
+  // 守備成功 (黄緑)
+  { label: "ディグ成功", action: "DIG", result: "成功", color: "bg-lime-500" },
+  { label: "レセプション A", action: "RECEPTION", result: "Aパス", color: "bg-lime-500" },
+  // レセプション B/C
+  { label: "レセプション B", action: "RECEPTION", result: "Bパス", color: "bg-amber-500" },
+  { label: "レセプション C", action: "RECEPTION", result: "Cパス", color: "bg-orange-500" },
 ] as const;
 
 const TEAM_ACTIONS = {
@@ -167,7 +177,11 @@ export default function MatchPage() {
   const [playerOutId, setPlayerOutId] = useState("");
   const [playerInId, setPlayerInId] = useState("");
   const [isProcessingEvent, setIsProcessingEvent] = useState(false);
-
+  
+  type LongPressMode = 'success' | null;
+  const [longPressMode, setLongPressMode] = useState<LongPressMode>(null);
+  const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
   /** 初期ロード（試合・選手） */
   useEffect(() => {
     if (!db || !teamId || !matchId) return;
@@ -340,8 +354,7 @@ export default function MatchPage() {
   };
 
   /** 記録モーダル */
-  const handlePlayerTileClick = (player: RosterPlayer) => { setSelectedPlayer(player); setIsActionModalOpen(true); };
-  const handleCloseActionModal = () => setSelectedPlayer(null);
+  const handleCloseActionModal = () => { setSelectedPlayer(null); setLongPressMode(null); };
 
   /** イベント記録（個人・スコア変動あり） */
   const handleRecordEvent = async (actionToRecord: string, result: string) => {
@@ -447,6 +460,23 @@ export default function MatchPage() {
     } finally {
       setIsProcessingEvent(false);
       handleCloseActionModal();
+    }
+  };
+
+  /** 長押しイベントハンドラ */
+  const handleTouchStart = (player: RosterPlayer) => {
+    pressTimerRef.current = setTimeout(() => {
+      setSelectedPlayer(player);
+      setLongPressMode('success');
+      setIsActionModalOpen(true);
+    }, 500);
+  };
+  const handleTouchEnd = (player: RosterPlayer) => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+      setSelectedPlayer(player);
+      setIsActionModalOpen(true);
     }
   };
 
@@ -621,7 +651,13 @@ export default function MatchPage() {
                 {currentSet.status !== "ongoing" && <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 mb-4 rounded-r-lg" role="alert"><p className="font-bold">編集モード</p><p>このセットは終了していますが、プレーの追加・修正が可能です。</p></div>}
                 <div className="grid grid-cols-3 sm:grid-cols-3 gap-4">
                   {currentSet.roster.filter(p => p.position !== "SUB").map(player => (
-                    <div key={player.playerId} onClick={() => handlePlayerTileClick(player)} className="bg-white p-4 rounded-lg shadow-md text-center cursor-pointer hover:bg-blue-50">
+                    <div
+                      key={player.playerId}
+                      onTouchStart={() => handleTouchStart(player)}
+                      onTouchEnd={() => handleTouchEnd(player)}
+                      onContextMenu={(e) => { e.preventDefault(); handleTouchStart(player); }}
+                      className="bg-white p-4 rounded-lg shadow-md text-center cursor-pointer hover:bg-blue-50 select-none"
+                    >
                       <p className="font-bold text-xl text-gray-900">{player.displayName}</p>
                       <p className="text-base text-blue-800 font-semibold">{player.position}</p>
                     </div>
@@ -705,18 +741,29 @@ export default function MatchPage() {
           </div>
         </div>
       )}
-
+      
       {isActionModalOpen && selectedPlayer && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
-          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
             <h2 className="text-2xl font-bold mb-6 text-gray-900">{selectedPlayer.displayName}のプレー</h2>
             <div className="grid grid-cols-2 gap-3">
-              {(selectedPlayer.position === 'L' ? QUICK_ACTIONS.filter(a => a.action === 'RECEPTION' || a.action === 'DIG') : QUICK_ACTIONS).map(item => (
-                <button key={item.label} onClick={() => handleRecordEvent(item.action, item.result)} disabled={isProcessingEvent} className={`p-4 rounded-md font-bold text-lg text-white shadow-md ${item.color} hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed`}>
+              {(
+                longPressMode === 'success'
+                  ? QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス'))
+                  : selectedPlayer.position === 'L'
+                    ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG') && !a.result.includes('成功') && !a.result.includes('パス'))
+                    : QUICK_ACTIONS.filter(a => !a.result.includes('成功') && !a.result.includes('パス'))
+              ).map(item => (
+                <button
+                  key={item.label}
+                  onClick={() => handleRecordEvent(item.action, item.result)}
+                  disabled={isProcessingEvent}
+                  className={`p-4 rounded-md font-bold text-lg text-white shadow-md ${item.color} hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed`}
+                >
                   {isProcessingEvent ? '記録中...' : item.label}
                 </button>
               ))}
-              {selectedPlayer.position === 'S' && (
+              {selectedPlayer.position === 'S' && !longPressMode && (
                   <button onClick={() => handleRecordSimpleMiss("TOSS_MISS")} disabled={isProcessingEvent} className="p-4 rounded-md font-bold text-lg text-white shadow-md bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400">{isProcessingEvent ? '記録中...' : 'トスミス'}</button>
               )}
             </div>
