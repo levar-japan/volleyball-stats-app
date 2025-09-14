@@ -1,6 +1,7 @@
 import { initializeApp, getApp, getApps, FirebaseApp } from "firebase/app";
 import { getAuth, connectAuthEmulator, Auth } from "firebase/auth";
-import { getFirestore, connectFirestoreEmulator, Firestore, enableIndexedDbPersistence } from "firebase/firestore";
+
+// getFirestore と関連するインポートを削除
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -12,35 +13,17 @@ const firebaseConfig = {
 };
 
 const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-
 const auth: Auth = getAuth(app);
-const db: Firestore = getFirestore(app);
 
-if (typeof window !== 'undefined') {
-  try {
-    enableIndexedDbPersistence(db)
-      .then(() => {
-        console.log("Firestore offline persistence enabled.");
-      })
-      .catch((err) => {
-        if (err.code == 'failed-precondition') {
-          console.warn("Firestore offline persistence failed: Multiple tabs open or other persistence mechanism is in use.");
-        } else if (err.code == 'unimplemented') {
-          console.warn("Firestore offline persistence is not supported in this browser.");
-        }
-      });
-  } catch (error) {
-    console.error("Error enabling offline persistence:", error);
-  }
-}
+// db の初期化とオフライン設定をここから削除
 
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
   try {
     connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
-    connectFirestoreEmulator(db, '127.0.0.1', 8080);
+    // connectFirestoreEmulator をここから削除
   } catch (_error) {
-    console.warn("Emulator already connected or failed to connect:", _error);
+    console.warn("Auth Emulator already connected or failed to connect:", _error);
   }
 }
 
-export { app, auth, db };
+export { app, auth }; // db をエクスポートから削除
