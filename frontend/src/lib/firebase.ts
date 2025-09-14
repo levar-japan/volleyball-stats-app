@@ -1,6 +1,6 @@
 import { initializeApp, getApp, getApps, FirebaseApp } from "firebase/app";
 import { getAuth, connectAuthEmulator, Auth } from "firebase/auth";
-import { getFirestore, connectFirestoreEmulator, Firestore } from "firebase/firestore";
+import { getFirestore, connectFirestoreEmulator, Firestore, enableIndexedDbPersistence } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -15,6 +15,24 @@ const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) 
 
 const auth: Auth = getAuth(app);
 const db: Firestore = getFirestore(app);
+
+if (typeof window !== 'undefined') {
+  try {
+    enableIndexedDbPersistence(db)
+      .then(() => {
+        console.log("Firestore offline persistence enabled.");
+      })
+      .catch((err) => {
+        if (err.code == 'failed-precondition') {
+          console.warn("Firestore offline persistence failed: Multiple tabs open or other persistence mechanism is in use.");
+        } else if (err.code == 'unimplemented') {
+          console.warn("Firestore offline persistence is not supported in this browser.");
+        }
+      });
+  } catch (error) {
+    console.error("Error enabling offline persistence:", error);
+  }
+}
 
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
   try {
