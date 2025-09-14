@@ -1,21 +1,24 @@
-import '@mantine/core/styles.css';
-import { MantineProvider } from "@mantine/core";
-import { Notifications } from "@mantine/notifications";
-import "@/styles/globals.css";
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { FirebaseProvider } from "./FirebaseProvider";
 
-export const metadata = {
+const inter = Inter({ subsets: ["latin"] });
+
+export const metadata: Metadata = {
   title: "Volleyball Stats App",
-  description: "バレーボールの個人成績をリアルタイムで記録・分析するためのWebアプリケーションです。",
+  description: "個人成績記録アプリ",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="ja">
-      <body>
-        <MantineProvider forceColorScheme="light">
-          <Notifications />
-          {children}
-        </MantineProvider>
+      <body className={inter.className}>
+        <FirebaseProvider>{children}</FirebaseProvider>
       </body>
     </html>
   );
