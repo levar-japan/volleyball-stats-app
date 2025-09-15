@@ -27,7 +27,7 @@ export default function NewMatchPage() {
 
   const handleCreateMatch = async (e: FormEvent) => {
     e.preventDefault();
-    if (!opponent.trim() || !teamInfo?.id || !user) {
+    if (!db || !opponent.trim() || !teamInfo?.id || !user) { // dbの存在確認を追加
       setError("対戦相手は必須です。");
       return;
     }
@@ -72,7 +72,7 @@ export default function NewMatchPage() {
             {error && <p className="text-red-500 text-xs italic mb-4">{error}</p>}
             <div className="flex items-center justify-between">
               <Link href="/dashboard"><span className="inline-block align-baseline font-bold text-sm text-blue-600 hover:text-blue-800">キャンセル</span></Link>
-              <button type="submit" disabled={loading || !teamInfo?.id} className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:bg-gray-400">
+              <button type="submit" disabled={loading || !teamInfo?.id} className="bg-blue-500 hover:bg-blue-700 text-white font-bold rounded-md hover:bg-blue-600">
                 {loading ? '作成中...' : '試合を作成'}
               </button>
             </div>

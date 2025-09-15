@@ -106,6 +106,7 @@ const eventConverter  = makeConverter<EventDoc>();
 const POSITIONS = ["S", "OH", "OP", "MB", "L", "SUB"] as const;
 
 const QUICK_ACTIONS = [
+  // 得点 / 失点
   { label: "アタック得点", action: "ATTACK", result: "得点", color: "bg-green-600" },
   { label: "アタック失点", action: "ATTACK", result: "失点", color: "bg-red-600" },
   { label: "サーブ得点", action: "SERVE", result: "得点", color: "bg-green-600" },
@@ -114,14 +115,15 @@ const QUICK_ACTIONS = [
   { label: "ブロック失点", action: "BLOCK", result: "失点", color: "bg-red-600" },
   { label: "レセプション失点", action: "RECEPTION", result: "失点", color: "bg-red-600" },
   { label: "ディグ失敗", action: "DIG", result: "失敗", color: "bg-red-600" },
-  { label: "アタック成功", action: "ATTACK", result: "成功", color: "bg-blue-600" },
-  { label: "サーブ成功", action: "SERVE", result: "成功", color: "bg-blue-600" },
-  { label: "ブロック成功", action: "BLOCK", result: "成功", color: "bg-blue-600" },
+  // 成功系
   { label: "サーブ効果", action: "SERVE", result: "効果", color: "bg-teal-500" },
-  { label: "ディグ成功", action: "DIG", result: "成功", color: "bg-lime-500" },
+  { label: "サーブ成功", action: "SERVE", result: "成功", color: "bg-blue-600" },
+  { label: "アタック成功", action: "ATTACK", result: "成功", color: "bg-blue-600" },
+  { label: "ブロック成功", action: "BLOCK", result: "成功", color: "bg-blue-600" },
   { label: "レセプション A", action: "RECEPTION", result: "Aパス", color: "bg-lime-500" },
   { label: "レセプション B", action: "RECEPTION", result: "Bパス", color: "bg-amber-500" },
   { label: "レセプション C", action: "RECEPTION", result: "Cパス", color: "bg-orange-500" },
+  { label: "ディグ成功", action: "DIG", result: "成功", color: "bg-lime-500" },
 ] as const;
 
 const TEAM_ACTIONS = {
@@ -759,12 +761,8 @@ export default function MatchPage() {
             <div className="grid grid-cols-2 gap-3">
               {(
                 longPressMode === 'success'
-                  ? selectedPlayer.position === 'L'
-                      ? QUICK_ACTIONS.filter(a => (a.action === 'RECEPTION' || a.action === 'DIG') && !a.result.includes('失点') && !a.result.includes('失敗'))
-                      : QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス') || a.result === '効果')
-                  : selectedPlayer.position === 'L'
-                    ? []
-                    : QUICK_ACTIONS.filter(a => !a.result.includes('成功') && !a.result.includes('パス') && a.result !== '効果')
+                  ? QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス') || a.result === '効果')
+                  : QUICK_ACTIONS.filter(a => !a.result.includes('成功') && !a.result.includes('パス') && a.result !== '効果')
               ).map(item => (
                 <button
                   key={item.label}
@@ -775,7 +773,7 @@ export default function MatchPage() {
                   {isProcessingEvent ? '記録中...' : item.label}
                 </button>
               ))}
-              {selectedPlayer.position === 'S' && longPressMode === 'success' && (
+              {selectedPlayer.position === 'S' && longPressMode !== 'success' && (
                   <button onClick={() => handleRecordSimpleMiss("TOSS_MISS")} disabled={isProcessingEvent} className="p-4 rounded-md font-bold text-lg text-white shadow-md bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400">{isProcessingEvent ? '記録中...' : 'トスミス'}</button>
               )}
             </div>
