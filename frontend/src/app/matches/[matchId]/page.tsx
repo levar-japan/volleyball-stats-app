@@ -18,6 +18,9 @@ import {
   FirestoreDataConverter,
   QueryDocumentSnapshot,
   DocumentSnapshot,
+  writeBatch, // writeBatch をインポート
+  increment,  // increment をインポート
+  addDoc,     // addDoc をインポート
 } from "firebase/firestore";
 
 /** ================================
@@ -106,7 +109,6 @@ const eventConverter  = makeConverter<EventDoc>();
 const POSITIONS = ["S", "OH", "OP", "MB", "L", "SUB"] as const;
 
 const QUICK_ACTIONS = [
-  // 得点 / 失点
   { label: "アタック得点", action: "ATTACK", result: "得点", color: "bg-green-600" },
   { label: "アタック失点", action: "ATTACK", result: "失点", color: "bg-red-600" },
   { label: "サーブ得点", action: "SERVE", result: "得点", color: "bg-green-600" },
@@ -115,7 +117,6 @@ const QUICK_ACTIONS = [
   { label: "ブロック失点", action: "BLOCK", result: "失点", color: "bg-red-600" },
   { label: "レセプション失点", action: "RECEPTION", result: "失点", color: "bg-red-600" },
   { label: "ディグ失敗", action: "DIG", result: "失敗", color: "bg-red-600" },
-  // 成功系
   { label: "サーブ効果", action: "SERVE", result: "効果", color: "bg-teal-500" },
   { label: "サーブ成功", action: "SERVE", result: "成功", color: "bg-blue-600" },
   { label: "アタック成功", action: "ATTACK", result: "成功", color: "bg-blue-600" },
@@ -192,7 +193,6 @@ export default function MatchPage() {
     }
   }, []);
   
-  /** 初期ロード（試合・選手） */
   useEffect(() => {
     if (!db || !teamId || !matchId) return;
     const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`).withConverter(matchConverter);
@@ -209,7 +209,6 @@ export default function MatchPage() {
     return () => { unmatch(); };
   }, [db, teamId, matchId]);
 
-  /** セット一覧購読 */
   useEffect(() => {
     if (!db || !teamId || !matchId) return;
     const setsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets`).withConverter(setConverter);
@@ -232,7 +231,6 @@ export default function MatchPage() {
     return () => { unsets(); };
   }, [db, teamId, matchId, viewingSetId]);
 
-  /** イベント購読 */
   useEffect(() => {
     if (!db || !teamId || !matchId || !currentSet?.id) { setEvents([]); return; }
     const eventsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}/events`).withConverter(eventConverter);
@@ -241,7 +239,6 @@ export default function MatchPage() {
     return () => { unevents(); };
   }, [db, teamId, matchId, currentSet?.id]);
 
-  /** スコア差分計算 */
   const calculateScoreChange = (action: string, result: string) => {
     let scoreChangeOur = 0, scoreChangeOpponent = 0;
     if (action === TEAM_ACTIONS.OPPONENT_ERROR) scoreChangeOur = 1;
@@ -251,7 +248,6 @@ export default function MatchPage() {
     return { scoreChangeOur, scoreChangeOpponent };
   };
 
-  /** ロスター関連 */
   const handleOpenRosterModal = (setForRoster?: Set) => {
     if (setForRoster) {
       const m = new Map<string, RosterPlayer>();
@@ -276,7 +272,6 @@ export default function MatchPage() {
     });
   };
 
-  /** 次セット準備 */
   const handlePrepareNextSet = () => {
     const base = activeSet ?? (sets.length ? sets[sets.length - 1] : null);
     if (base) {
@@ -293,35 +288,27 @@ export default function MatchPage() {
     setIsRosterModalOpen(true);
   };
 
-  /** セット開始 */
   const handleStartSet = async () => {
     if (!db || !teamId || !matchId) return;
     if (roster.size < 1) { alert("少なくとも1人の選手をポジションに設定してください。"); return; }
     const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`).withConverter(matchConverter);
     const setsRef  = collection(matchRef, "sets").withConverter(setConverter);
     const nextSetNumber = Math.max(0, ...sets.map(s => s.setNumber)) + 1;
-    const newSetRef = doc(setsRef);
     try {
-      await runTransaction(db, async (t) => {
-        const matchDoc = await t.get(matchRef);
-        if (!matchDoc.exists()) throw "Match document not found!";
-        const qy = query(setsRef, where("status", "==", "ongoing"));
-        const os = await getDocs(qy);
-        os.docs.forEach(d => t.update(d.ref, { status: "finished", updatedAt: serverTimestamp() }));
-        t.set(newSetRef, {
-          setNumber: nextSetNumber,
-          ourScore: 0,
-          opponentScore: 0,
-          status: "ongoing",
-          roster: Array.from(roster.values()),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        if (matchDoc.data()?.status !== 'finished') {
-          t.update(matchRef, { status: "ongoing", updatedAt: serverTimestamp() });
-        }
-      });
-      setViewingSetId(newSetRef.id);
+      const newSet = {
+        setNumber: nextSetNumber,
+        ourScore: 0,
+        opponentScore: 0,
+        status: "ongoing" as SetStatus,
+        roster: Array.from(roster.values()),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      await addDoc(setsRef, newSet);
+      if (match?.status !== 'finished') {
+        await updateDoc(matchRef, { status: "ongoing", updatedAt: serverTimestamp() });
+      }
+      setViewingSetId(null); // Let useEffect handle the switch
       setIsPreparingNextSet(false);
       setNextSetNumberPreview(null);
       handleCloseRosterModal();
@@ -331,7 +318,6 @@ export default function MatchPage() {
     }
   };
 
-  /** セット終了 */
   const handleFinishSet = async () => {
     if (!db || !teamId || !matchId || !activeSet) return;
     if (!window.confirm("このセットを終了しますか？")) return;
@@ -344,33 +330,30 @@ export default function MatchPage() {
     }
   };
 
-  /** 試合終了 */
   const handleFinishMatch = async () => {
     if (!db || !teamId || !matchId) return;
     if (!window.confirm("試合を終了しますか？（進行中のセットがあれば終了します）")) return;
     const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`).withConverter(matchConverter);
     const setsRef  = collection(matchRef, "sets").withConverter(setConverter);
     try {
-      await runTransaction(db, async (t) => {
-        const qy = query(setsRef, where("status", "==", "ongoing"));
-        const os = await getDocs(qy);
-        os.docs.forEach(d => t.update(d.ref, { status: "finished", updatedAt: serverTimestamp() }));
-        t.update(matchRef, { status: "finished", updatedAt: serverTimestamp() });
-      });
+      const batch = writeBatch(db);
+      const qy = query(setsRef, where("status", "==", "ongoing"));
+      const os = await getDocs(qy);
+      os.docs.forEach(d => batch.update(d.ref, { status: "finished", updatedAt: serverTimestamp() }));
+      batch.update(matchRef, { status: "finished", updatedAt: serverTimestamp() });
+      await batch.commit();
     } catch (e) {
       console.error(e);
       setError("試合の終了処理に失敗しました。");
     }
   };
 
-  /** 記録モーダル */
   const handleCloseActionModal = () => {
     setSelectedPlayer(null);
     setLongPressMode(null);
     setIsActionModalOpen(false);
   };
 
-  /** イベント記録（個人・スコア変動あり） */
   const handleRecordEvent = async (actionToRecord: string, result: string) => {
     if (!db || !teamId || !matchId || !currentSet || !selectedPlayer || isProcessingEvent) return;
     setIsProcessingEvent(true);
@@ -378,29 +361,29 @@ export default function MatchPage() {
       const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`).withConverter(setConverter);
       const eventsRef = collection(setRef, "events").withConverter(eventConverter);
       const { scoreChangeOur, scoreChangeOpponent } = calculateScoreChange(actionToRecord, result);
-      await runTransaction(db, async (t) => {
-        const setSnap = (await t.get(setRef)) as DocumentSnapshot<SetDoc>;
-        if (!setSnap.exists()) throw new Error("Set not found");
-        const currentOur = setSnap.data()!.ourScore || 0;
-        const currentOpp = setSnap.data()!.opponentScore || 0;
-        const newEventRef = doc(eventsRef);
-        t.set(newEventRef, {
-          playerId: selectedPlayer.playerId,
-          playerName: selectedPlayer.displayName,
-          position: selectedPlayer.position,
-          action: actionToRecord,
-          result,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          ourScore_at_event: currentOur + scoreChangeOur,
-          opponentScore_at_event: currentOpp + scoreChangeOpponent,
-        });
-        t.update(setRef, {
-          ourScore: currentOur + scoreChangeOur,
-          opponentScore: currentOpp + scoreChangeOpponent,
-          updatedAt: serverTimestamp(),
-        });
+      
+      const batch = writeBatch(db);
+      
+      const newEventRef = doc(eventsRef);
+      batch.set(newEventRef, {
+        playerId: selectedPlayer.playerId,
+        playerName: selectedPlayer.displayName,
+        position: selectedPlayer.position,
+        action: actionToRecord,
+        result,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
+
+      if (scoreChangeOur > 0 || scoreChangeOpponent > 0) {
+        batch.update(setRef, {
+          ourScore: increment(scoreChangeOur),
+          opponentScore: increment(scoreChangeOpponent),
+          updatedAt: serverTimestamp(),
+        });
+      }
+      
+      await batch.commit();
     } catch (e) {
       console.error(e);
       setError("記録の保存に失敗しました。");
@@ -410,7 +393,6 @@ export default function MatchPage() {
     }
   };
 
-  /** イベント記録（チーム・スコア変動あり） */
   const handleRecordTeamEvent = async (action: string) => {
     if (!db || !teamId || !matchId || !currentSet || isProcessingEvent) return;
     setIsProcessingEvent(true);
@@ -418,29 +400,27 @@ export default function MatchPage() {
       const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`).withConverter(setConverter);
       const eventsRef = collection(setRef, "events").withConverter(eventConverter);
       const { scoreChangeOur, scoreChangeOpponent } = calculateScoreChange(action, "");
-      await runTransaction(db, async (t) => {
-        const setSnap = (await t.get(setRef)) as DocumentSnapshot<SetDoc>;
-        if (!setSnap.exists()) throw new Error("Set not found");
-        const currentOur = setSnap.data()!.ourScore || 0;
-        const currentOpp = setSnap.data()!.opponentScore || 0;
-        const newEventRef = doc(eventsRef);
-        t.set(newEventRef, {
-          playerId: null,
-          playerName: "チーム",
-          position: null,
-          action,
-          result: "",
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          ourScore_at_event: currentOur + scoreChangeOur,
-          opponentScore_at_event: currentOpp + scoreChangeOpponent,
-        });
-        t.update(setRef, {
-          ourScore: currentOur + scoreChangeOur,
-          opponentScore: currentOpp + scoreChangeOpponent,
-          updatedAt: serverTimestamp(),
-        });
+      
+      const batch = writeBatch(db);
+
+      const newEventRef = doc(eventsRef);
+      batch.set(newEventRef, {
+        playerId: null,
+        playerName: "チーム",
+        position: null,
+        action,
+        result: "",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
+      
+      batch.update(setRef, {
+        ourScore: increment(scoreChangeOur),
+        opponentScore: increment(scoreChangeOpponent),
+        updatedAt: serverTimestamp(),
+      });
+
+      await batch.commit();
     } catch (e) {
       console.error(e);
       setError("チームプレーの記録に失敗しました。");
@@ -449,24 +429,19 @@ export default function MatchPage() {
     }
   };
   
-  /** イベント記録（スコア変動なしのミス専用） */
   const handleRecordSimpleMiss = async (actionKey: ActionKey) => {
     if (!db || !teamId || !matchId || !currentSet || !selectedPlayer || isProcessingEvent) return;
     setIsProcessingEvent(true);
     try {
-      const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`);
-      const eventsRef = collection(setRef, "events").withConverter(eventConverter);
-      const newEventRef = doc(eventsRef);
-      await runTransaction(db, async (t) => {
-        t.set(newEventRef, {
-          playerId: selectedPlayer.playerId,
-          playerName: selectedPlayer.displayName,
-          position: selectedPlayer.position,
-          action: actionKey,
-          result: "ミス",
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+      const eventsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}/events`).withConverter(eventConverter);
+      await addDoc(eventsRef, {
+        playerId: selectedPlayer.playerId,
+        playerName: selectedPlayer.displayName,
+        position: selectedPlayer.position,
+        action: actionKey,
+        result: "ミス",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
     } catch (e) {
       console.error(e);
@@ -477,22 +452,15 @@ export default function MatchPage() {
     }
   };
 
-  /** タップ／長押しイベントハンドラ */
-  const handlePointerDown = () => {
-    pressStartTimeRef.current = Date.now();
-  };
+  const handlePointerDown = () => { pressStartTimeRef.current = Date.now(); };
   const handlePointerUp = (player: RosterPlayer) => {
     const pressDuration = Date.now() - pressStartTimeRef.current;
-    if (pressDuration < 400) {
-      setLongPressMode('success');
-    } else {
-      setLongPressMode(null);
-    }
+    if (pressDuration < 400) { setLongPressMode('success'); } 
+    else { setLongPressMode(null); }
     setSelectedPlayer(player);
     setIsActionModalOpen(true);
   };
   
-  /** 取消／編集／削除 */
   const handleUndoEvent = async () => {
     if (!events.length || !currentSet) return;
     await handleDeleteSpecificEvent(events[0].id, false);
@@ -570,7 +538,6 @@ export default function MatchPage() {
     }
   };
 
-  /** 交代 */
   const openSubModal  = () => { setPlayerInId(""); setPlayerOutId(""); setIsSubModalOpen(true); };
   const closeSubModal = () => setIsSubModalOpen(false);
   const handleSubstitutePlayer = async () => {
@@ -593,19 +560,16 @@ export default function MatchPage() {
     }
   };
 
-  /** メモ化 */
   const subPlayers = useMemo(() => {
     if (!currentSet) return [];
     const onCourt = new Set(currentSet.roster.map(p => p.playerId));
     return players.filter(p => !onCourt.has(p.id));
   }, [currentSet, players]);
 
-  /** 早期リターン */
-  if (loading) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合データを読み込んでいます...</p></div>;
+  if (loading || !teamInfo) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合データを読み込んでいます...</p></div>;
   if (error) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></div>;
   if (!match) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合が見つかりません。</p></div>;
 
-  /** JSX */
   return (
     <main className="min-h-screen bg-gray-100 p-2 sm:p-8">
       <div className="w-full max-w-5xl mx-auto">
