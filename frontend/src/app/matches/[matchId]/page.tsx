@@ -189,9 +189,7 @@ export default function MatchPage() {
 
   useEffect(() => {
     const storedTeam = localStorage.getItem('currentTeam');
-    if (storedTeam) {
-      setTeamInfo(JSON.parse(storedTeam));
-    }
+    if (storedTeam) { setTeamInfo(JSON.parse(storedTeam)); }
   }, []);
   
   useEffect(() => {
@@ -199,12 +197,10 @@ export default function MatchPage() {
     const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`).withConverter(matchConverter);
     const playersRef = collection(db, `teams/${teamId}/players`).withConverter(playerConverter);
     setLoading(true);
-
     const unmatch = onSnapshot(matchRef, (docSnap) => {
       if (docSnap.exists()) setMatch({ id: docSnap.id, ...docSnap.data() } as Match);
       else setError("試合が見つかりません。");
     }, () => setError("試合情報の取得に失敗しました。"));
-    
     const unplayers = onSnapshot(playersRef, (snapshot) => {
         setPlayers(snapshot.docs.map(d => withId(d)) as Player[]);
         if (loading) setLoading(false);
@@ -213,12 +209,8 @@ export default function MatchPage() {
         setError("選手の読み込みに失敗しました。");
         setLoading(false);
     });
-
-    return () => { 
-        unmatch();
-        unplayers();
-    };
-  }, [db, teamId, matchId]);
+    return () => { unmatch(); unplayers(); };
+  }, [db, teamId, matchId, loading]);
 
   useEffect(() => {
     if (!db || !teamId || !matchId) return;
@@ -272,9 +264,7 @@ export default function MatchPage() {
       const m = new Map<string, RosterPlayer>();
       targetSet.roster.forEach(p => m.set(p.playerId, p));
       setRoster(m);
-    } else {
-      setRoster(new Map());
-    }
+    } else { setRoster(new Map()); }
     setIsRosterModalOpen(true);
   };
   const handleCloseRosterModal = () => { setIsRosterModalOpen(false); setIsPreparingNextSet(false); setNextSetNumberPreview(null); };
@@ -328,6 +318,29 @@ export default function MatchPage() {
     try { await updateDoc(setRef, { status: "finished", updatedAt: serverTimestamp() });
     } catch (e) { console.error(e); setError("セットの終了処理に失敗しました。"); }
   };
+
+  // ★★★★★ 新規追加機能 ★★★★★
+  const handleDeleteSet = async (setId: string) => {
+    if (!db || !teamId || !matchId) return;
+    const setToDelete = sets.find(s => s.id === setId);
+    const setNumber = setToDelete ? setToDelete.setNumber : '';
+
+    if (!window.confirm(`Set ${setNumber} とそのセット内の全てのプレー記録を完全に削除します。この操作は元に戻せません。よろしいですか？`)) return;
+
+    try {
+      const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${setId}`);
+      const eventsRef = collection(setRef, 'events');
+      const eventsSnap = await getDocs(eventsRef);
+      const batch = writeBatch(db);
+      eventsSnap.forEach(eventDoc => { batch.delete(eventDoc.ref); });
+      batch.delete(setRef);
+      await batch.commit();
+    } catch (err) {
+      console.error("セットの削除に失敗しました: ", err);
+      setError("セットの削除に失敗しました。");
+    }
+  };
+  // ★★★★★ ここまで ★★★★★
 
   const handleFinishMatch = async () => {
     if (!db || !teamId || !matchId) return;
@@ -504,29 +517,14 @@ export default function MatchPage() {
     } catch (err) { console.error(err); setError("ロスターの更新に失敗しました。"); }
   };
 
-  // ★★★★★ 修正箇所 ★★★★★
-  // 表示するアクションボタンを useMemo で計算
   const displayedQuickActions = useMemo(() => {
     if (!selectedPlayer) return [];
-
-    // 1. ショートタップか長押しかで基本リストを決定
-    let actions = longPressMode === 'success'
-        ? QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス') || a.result === '効果')
-        : QUICK_ACTIONS.filter(a => !a.result.includes('成功') && !a.result.includes('パス') && a.result !== '効果');
-
-    // 2. リベロ(L)の場合、特定のアクションを除外
+    let actions = longPressMode === 'success' ? QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス') || a.result === '効果') : QUICK_ACTIONS.filter(a => !a.result.includes('成功') && !a.result.includes('パス') && a.result !== '効果');
     if (selectedPlayer.position === 'L') {
-        actions = actions.filter(item => 
-            item.action !== 'ATTACK' && 
-            item.action !== 'BLOCK' && 
-            item.action !== 'SERVE'
-        );
+        actions = actions.filter(item => item.action !== 'ATTACK' && item.action !== 'BLOCK' && item.action !== 'SERVE');
     }
-
     return actions;
   }, [selectedPlayer, longPressMode]);
-  // ★★★★★ 修正箇所ここまで ★★★★★
-
 
   if (loading || !teamInfo) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合データを読み込んでいます...</p></div>;
   if (error) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></div>;
@@ -580,6 +578,8 @@ export default function MatchPage() {
                         <button onClick={() => handleOpenRosterModal()} className="px-3 py-2 bg-purple-600 text-white text-sm font-bold rounded-md hover:bg-purple-700">ロスター編集</button>
                       </>
                     )}
+                    {/* ★★★★★ 新規追加UI ★★★★★ */}
+                    <button onClick={() => handleDeleteSet(currentSet.id)} className="px-3 py-2 bg-pink-700 text-white text-sm font-bold rounded-md hover:bg-pink-800">セット削除</button>
                   </div>
                 </div>
                 <div className="text-center"><p className="text-xl font-bold text-gray-800">相手チーム</p><p className="text-6xl font-bold text-red-600 tracking-tighter">{currentSet.opponentScore}</p></div>
