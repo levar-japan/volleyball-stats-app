@@ -192,7 +192,6 @@ export default function MatchPage() {
     if (storedTeam) { setTeamInfo(JSON.parse(storedTeam)); }
   }, []);
   
-  // ★★★★★ 修正箇所 ★★★★★
   useEffect(() => {
     if (!db || !teamId || !matchId) return;
     setLoading(true);
@@ -207,7 +206,7 @@ export default function MatchPage() {
     
     const unplayers = onSnapshot(playersRef, (snapshot) => {
         setPlayers(snapshot.docs.map(d => withId(d)) as Player[]);
-        setLoading(false); // 選手リストの読み込みが完了したらローディングを終了
+        setLoading(false);
     }, (err) => {
         console.error("選手の読み込みに失敗しました: ", err);
         setError("選手の読み込みに失敗しました。");
@@ -215,8 +214,7 @@ export default function MatchPage() {
     });
 
     return () => { unmatch(); unplayers(); };
-  }, [db, teamId, matchId]); // ★ 依存配列から `loading` を削除
-  // ★★★★★ 修正箇所ここまで ★★★★★
+  }, [db, teamId, matchId]);
 
   useEffect(() => {
     if (!db || !teamId || !matchId) return;
@@ -325,24 +323,46 @@ export default function MatchPage() {
     } catch (e) { console.error(e); setError("セットの終了処理に失敗しました。"); }
   };
 
+  // ★★★★★ 修正・強化箇所 ★★★★★
   const handleDeleteSet = async (setId: string) => {
     if (!db || !teamId || !matchId) return;
     const setToDelete = sets.find(s => s.id === setId);
-    const setNumber = setToDelete ? setToDelete.setNumber : '';
-    if (!window.confirm(`Set ${setNumber} とそのセット内の全てのプレー記録を完全に削除します。この操作は元に戻せません。よろしいですか？`)) return;
+    if (!setToDelete) {
+      setError("削除対象のセットが見つかりません。");
+      return;
+    }
+    const { setNumber: deletedSetNumber } = setToDelete;
+
+    if (!window.confirm(`Set ${deletedSetNumber} とそのセット内の全てのプレー記録を完全に削除します。この操作は元に戻せません。よろしいですか？`)) return;
+
     try {
+      const batch = writeBatch(db);
+      
+      // 1. 削除対象セットのイベントをすべて削除
       const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${setId}`);
       const eventsRef = collection(setRef, 'events');
       const eventsSnap = await getDocs(eventsRef);
-      const batch = writeBatch(db);
       eventsSnap.forEach(eventDoc => { batch.delete(eventDoc.ref); });
+
+      // 2. 削除対象セット自体を削除
       batch.delete(setRef);
+
+      // 3. これ以降のセット番号を繰り下げ
+      const setsToUpdate = sets.filter(s => s.setNumber > deletedSetNumber);
+      setsToUpdate.forEach(s => {
+        const subsequentSetRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${s.id}`);
+        batch.update(subsequentSetRef, { setNumber: s.setNumber - 1 });
+      });
+
+      // 4. バッチ処理を実行
       await batch.commit();
+
     } catch (err) {
-      console.error("セットの削除に失敗しました: ", err);
+      console.error("セットの削除と繰り下げ処理に失敗しました: ", err);
       setError("セットの削除に失敗しました。");
     }
   };
+  // ★★★★★ 修正箇所ここまで ★★★★★
 
   const handleFinishMatch = async () => {
     if (!db || !teamId || !matchId) return;
