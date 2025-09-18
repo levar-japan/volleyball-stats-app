@@ -18,9 +18,9 @@ import {
   FirestoreDataConverter,
   QueryDocumentSnapshot,
   DocumentSnapshot,
-  writeBatch, // writeBatch をインポート
-  increment,  // increment をインポート
-  addDoc,     // addDoc をインポート
+  writeBatch,
+  increment,
+  addDoc,
 } from "firebase/firestore";
 
 /** ================================
@@ -185,6 +185,7 @@ export default function MatchPage() {
   type LongPressMode = 'success' | null;
   const [longPressMode, setLongPressMode] = useState<LongPressMode>(null);
   const pressStartTimeRef = useRef(0);
+  const isInitialLoadRef = useRef(true); // ★ isInitialをuseRefに置き換え
 
   useEffect(() => {
     const storedTeam = localStorage.getItem('currentTeam');
@@ -209,27 +210,46 @@ export default function MatchPage() {
     return () => { unmatch(); };
   }, [db, teamId, matchId]);
 
+  // ★★★★★ 修正箇所 ★★★★★
   useEffect(() => {
     if (!db || !teamId || !matchId) return;
+
     const setsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets`).withConverter(setConverter);
     const qy = query(setsRef, orderBy("setNumber", "asc"));
-    let isInitial = true;
+    
     const unsets = onSnapshot(qy, (snapshot) => {
-      const list = snapshot.docs.map(d => withId(d)) as Set[];
-      setSets(list);
-      const ongoing = list.find(s => s.status === "ongoing") ?? null;
-      setActiveSet(ongoing);
-      if (isInitial) {
-        isInitial = false;
-        const initial = ongoing ?? (list.length ? list[list.length - 1] : null);
-        setViewingSetId(initial?.id ?? null);
-      } else if (viewingSetId && !list.some(s => s.id === viewingSetId)) {
-        const fallback = ongoing ?? (list.length ? list[list.length - 1] : null);
-        setViewingSetId(fallback?.id ?? null);
-      }
-    }, () => setError("セット情報の取得に失敗しました。"));
+        const newList = snapshot.docs.map(d => withId(d)) as Set[];
+        const newActiveSet = newList.find(s => s.status === "ongoing") ?? null;
+        
+        setSets(newList);
+        setActiveSet(newActiveSet);
+
+        // 初回読み込み時のみ、表示セットを自動設定する
+        if (isInitialLoadRef.current) {
+            isInitialLoadRef.current = false;
+            const initialSet = newActiveSet ?? (newList.length > 0 ? newList[newList.length - 1] : null);
+            setViewingSetId(initialSet?.id ?? null);
+        } else {
+            // 表示中のセットが削除された場合のフォールバック処理
+            setViewingSetId(currentId => {
+                // currentId が 존재하고, newList にその ID がない場合
+                if (currentId && !newList.some(s => s.id === currentId)) {
+                    // 進行中のセット、または最後のセットにフォールバック
+                    const fallbackSet = newActiveSet ?? (newList.length > 0 ? newList[newList.length - 1] : null);
+                    return fallbackSet?.id ?? null;
+                }
+                // それ以外の場合は、ユーザーが選択しているセットIDを維持する
+                return currentId;
+            });
+        }
+    }, (err) => {
+        console.error("セット情報の取得に失敗しました: ", err);
+        setError("セット情報の取得に失敗しました。");
+    });
+
     return () => { unsets(); };
-  }, [db, teamId, matchId, viewingSetId]);
+  }, [db, teamId, matchId]); // ★ 依存配列から viewingSetId を削除
+  // ★★★★★ 修正箇所ここまで ★★★★★
 
   useEffect(() => {
     if (!db || !teamId || !matchId || !currentSet?.id) { setEvents([]); return; }
@@ -304,11 +324,13 @@ export default function MatchPage() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
-      await addDoc(setsRef, newSet);
+      // 新しいセットを追加し、そのIDを取得してビューを切り替える
+      const newSetDocRef = await addDoc(setsRef, newSet);
+      setViewingSetId(newSetDocRef.id);
+
       if (match?.status !== 'finished') {
         await updateDoc(matchRef, { status: "ongoing", updatedAt: serverTimestamp() });
       }
-      setViewingSetId(null); // Let useEffect handle the switch
       setIsPreparingNextSet(false);
       setNextSetNumberPreview(null);
       handleCloseRosterModal();
