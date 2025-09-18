@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, FormEvent } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useFirebase } from "@/app/FirebaseProvider";
@@ -17,7 +17,6 @@ import {
   orderBy,
   FirestoreDataConverter,
   QueryDocumentSnapshot,
-  DocumentSnapshot,
   writeBatch,
   increment,
   addDoc,
@@ -181,11 +180,12 @@ export default function MatchPage() {
   const [playerOutId, setPlayerOutId] = useState("");
   const [playerInId, setPlayerInId] = useState("");
   const [isProcessingEvent, setIsProcessingEvent] = useState(false);
+  const [newPlayerName, setNewPlayerName] = useState(''); // ★ 新規追加選手名
   
   type LongPressMode = 'success' | null;
   const [longPressMode, setLongPressMode] = useState<LongPressMode>(null);
   const pressStartTimeRef = useRef(0);
-  const isInitialLoadRef = useRef(true); // ★ isInitialをuseRefに置き換え
+  const isInitialLoadRef = useRef(true);
 
   useEffect(() => {
     const storedTeam = localStorage.getItem('currentTeam');
@@ -199,46 +199,47 @@ export default function MatchPage() {
     const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`).withConverter(matchConverter);
     const playersRef = collection(db, `teams/${teamId}/players`).withConverter(playerConverter);
     setLoading(true);
+
     const unmatch = onSnapshot(matchRef, (docSnap) => {
       if (docSnap.exists()) setMatch({ id: docSnap.id, ...docSnap.data() } as Match);
       else setError("試合が見つかりません。");
     }, () => setError("試合情報の取得に失敗しました。"));
-    getDocs(playersRef)
-      .then((ps) => setPlayers(ps.docs.map(d => withId(d)) as Player[]))
-      .catch(() => setError("選手の読み込みに失敗しました。"))
-      .finally(() => setLoading(false));
-    return () => { unmatch(); };
+    
+    // ★ 選手リストをリアルタイムで監視するように変更
+    const unplayers = onSnapshot(playersRef, (snapshot) => {
+        setPlayers(snapshot.docs.map(d => withId(d)) as Player[]);
+        if (loading) setLoading(false);
+    }, (err) => {
+        console.error("選手の読み込みに失敗しました: ", err);
+        setError("選手の読み込みに失敗しました。");
+        setLoading(false);
+    });
+
+    return () => { 
+        unmatch();
+        unplayers();
+    };
   }, [db, teamId, matchId]);
 
-  // ★★★★★ 修正箇所 ★★★★★
   useEffect(() => {
     if (!db || !teamId || !matchId) return;
-
     const setsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets`).withConverter(setConverter);
     const qy = query(setsRef, orderBy("setNumber", "asc"));
-    
     const unsets = onSnapshot(qy, (snapshot) => {
         const newList = snapshot.docs.map(d => withId(d)) as Set[];
         const newActiveSet = newList.find(s => s.status === "ongoing") ?? null;
-        
         setSets(newList);
         setActiveSet(newActiveSet);
-
-        // 初回読み込み時のみ、表示セットを自動設定する
         if (isInitialLoadRef.current) {
             isInitialLoadRef.current = false;
             const initialSet = newActiveSet ?? (newList.length > 0 ? newList[newList.length - 1] : null);
             setViewingSetId(initialSet?.id ?? null);
         } else {
-            // 表示中のセットが削除された場合のフォールバック処理
             setViewingSetId(currentId => {
-                // currentId が 존재하고, newList にその ID がない場合
                 if (currentId && !newList.some(s => s.id === currentId)) {
-                    // 進行中のセット、または最後のセットにフォールバック
                     const fallbackSet = newActiveSet ?? (newList.length > 0 ? newList[newList.length - 1] : null);
                     return fallbackSet?.id ?? null;
                 }
-                // それ以外の場合は、ユーザーが選択しているセットIDを維持する
                 return currentId;
             });
         }
@@ -246,10 +247,8 @@ export default function MatchPage() {
         console.error("セット情報の取得に失敗しました: ", err);
         setError("セット情報の取得に失敗しました。");
     });
-
     return () => { unsets(); };
-  }, [db, teamId, matchId]); // ★ 依存配列から viewingSetId を削除
-  // ★★★★★ 修正箇所ここまで ★★★★★
+  }, [db, teamId, matchId]);
 
   useEffect(() => {
     if (!db || !teamId || !matchId || !currentSet?.id) { setEvents([]); return; }
@@ -269,9 +268,10 @@ export default function MatchPage() {
   };
 
   const handleOpenRosterModal = (setForRoster?: Set) => {
-    if (setForRoster) {
+    const targetSet = setForRoster || currentSet;
+    if (targetSet) {
       const m = new Map<string, RosterPlayer>();
-      setForRoster.roster.forEach(p => m.set(p.playerId, p));
+      targetSet.roster.forEach(p => m.set(p.playerId, p));
       setRoster(m);
     } else {
       setRoster(new Map());
@@ -316,40 +316,26 @@ export default function MatchPage() {
     const nextSetNumber = Math.max(0, ...sets.map(s => s.setNumber)) + 1;
     try {
       const newSet = {
-        setNumber: nextSetNumber,
-        ourScore: 0,
-        opponentScore: 0,
-        status: "ongoing" as SetStatus,
-        roster: Array.from(roster.values()),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        setNumber: nextSetNumber, ourScore: 0, opponentScore: 0, status: "ongoing" as SetStatus,
+        roster: Array.from(roster.values()), createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
       };
-      // 新しいセットを追加し、そのIDを取得してビューを切り替える
       const newSetDocRef = await addDoc(setsRef, newSet);
       setViewingSetId(newSetDocRef.id);
-
       if (match?.status !== 'finished') {
         await updateDoc(matchRef, { status: "ongoing", updatedAt: serverTimestamp() });
       }
       setIsPreparingNextSet(false);
       setNextSetNumberPreview(null);
       handleCloseRosterModal();
-    } catch (e) {
-      console.error(e);
-      setError("セットの開始に失敗しました。");
-    }
+    } catch (e) { console.error(e); setError("セットの開始に失敗しました。"); }
   };
 
   const handleFinishSet = async () => {
     if (!db || !teamId || !matchId || !activeSet) return;
     if (!window.confirm("このセットを終了しますか？")) return;
     const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${activeSet.id}`).withConverter(setConverter);
-    try {
-      await updateDoc(setRef, { status: "finished", updatedAt: serverTimestamp() });
-    } catch (e) {
-      console.error(e);
-      setError("セットの終了処理に失敗しました。");
-    }
+    try { await updateDoc(setRef, { status: "finished", updatedAt: serverTimestamp() });
+    } catch (e) { console.error(e); setError("セットの終了処理に失敗しました。"); }
   };
 
   const handleFinishMatch = async () => {
@@ -364,17 +350,10 @@ export default function MatchPage() {
       os.docs.forEach(d => batch.update(d.ref, { status: "finished", updatedAt: serverTimestamp() }));
       batch.update(matchRef, { status: "finished", updatedAt: serverTimestamp() });
       await batch.commit();
-    } catch (e) {
-      console.error(e);
-      setError("試合の終了処理に失敗しました。");
-    }
+    } catch (e) { console.error(e); setError("試合の終了処理に失敗しました。"); }
   };
 
-  const handleCloseActionModal = () => {
-    setSelectedPlayer(null);
-    setLongPressMode(null);
-    setIsActionModalOpen(false);
-  };
+  const handleCloseActionModal = () => { setSelectedPlayer(null); setLongPressMode(null); setIsActionModalOpen(false); };
 
   const handleRecordEvent = async (actionToRecord: string, result: string) => {
     if (!db || !teamId || !matchId || !currentSet || !selectedPlayer || isProcessingEvent) return;
@@ -383,36 +362,20 @@ export default function MatchPage() {
       const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`).withConverter(setConverter);
       const eventsRef = collection(setRef, "events").withConverter(eventConverter);
       const { scoreChangeOur, scoreChangeOpponent } = calculateScoreChange(actionToRecord, result);
-      
       const batch = writeBatch(db);
-      
       const newEventRef = doc(eventsRef);
       batch.set(newEventRef, {
-        playerId: selectedPlayer.playerId,
-        playerName: selectedPlayer.displayName,
-        position: selectedPlayer.position,
-        action: actionToRecord,
-        result,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        playerId: selectedPlayer.playerId, playerName: selectedPlayer.displayName, position: selectedPlayer.position,
+        action: actionToRecord, result, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
       });
-
       if (scoreChangeOur > 0 || scoreChangeOpponent > 0) {
         batch.update(setRef, {
-          ourScore: increment(scoreChangeOur),
-          opponentScore: increment(scoreChangeOpponent),
-          updatedAt: serverTimestamp(),
+          ourScore: increment(scoreChangeOur), opponentScore: increment(scoreChangeOpponent), updatedAt: serverTimestamp(),
         });
       }
-      
       await batch.commit();
-    } catch (e) {
-      console.error(e);
-      setError("記録の保存に失敗しました。");
-    } finally {
-      handleCloseActionModal();
-      setIsProcessingEvent(false);
-    }
+    } catch (e) { console.error(e); setError("記録の保存に失敗しました。");
+    } finally { handleCloseActionModal(); setIsProcessingEvent(false); }
   };
 
   const handleRecordTeamEvent = async (action: string) => {
@@ -422,33 +385,18 @@ export default function MatchPage() {
       const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`).withConverter(setConverter);
       const eventsRef = collection(setRef, "events").withConverter(eventConverter);
       const { scoreChangeOur, scoreChangeOpponent } = calculateScoreChange(action, "");
-      
       const batch = writeBatch(db);
-
       const newEventRef = doc(eventsRef);
       batch.set(newEventRef, {
-        playerId: null,
-        playerName: "チーム",
-        position: null,
-        action,
-        result: "",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        playerId: null, playerName: "チーム", position: null, action, result: "",
+        createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
       });
-      
       batch.update(setRef, {
-        ourScore: increment(scoreChangeOur),
-        opponentScore: increment(scoreChangeOpponent),
-        updatedAt: serverTimestamp(),
+        ourScore: increment(scoreChangeOur), opponentScore: increment(scoreChangeOpponent), updatedAt: serverTimestamp(),
       });
-
       await batch.commit();
-    } catch (e) {
-      console.error(e);
-      setError("チームプレーの記録に失敗しました。");
-    } finally {
-      setIsProcessingEvent(false);
-    }
+    } catch (e) { console.error(e); setError("チームプレーの記録に失敗しました。");
+    } finally { setIsProcessingEvent(false); }
   };
   
   const handleRecordSimpleMiss = async (actionKey: ActionKey) => {
@@ -457,21 +405,11 @@ export default function MatchPage() {
     try {
       const eventsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}/events`).withConverter(eventConverter);
       await addDoc(eventsRef, {
-        playerId: selectedPlayer.playerId,
-        playerName: selectedPlayer.displayName,
-        position: selectedPlayer.position,
-        action: actionKey,
-        result: "ミス",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        playerId: selectedPlayer.playerId, playerName: selectedPlayer.displayName, position: selectedPlayer.position,
+        action: actionKey, result: "ミス", createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
       });
-    } catch (e) {
-      console.error(e);
-      setError("ミスの記録に失敗しました。");
-    } finally {
-      setIsProcessingEvent(false);
-      handleCloseActionModal();
-    }
+    } catch (e) { console.error(e); setError("ミスの記録に失敗しました。");
+    } finally { setIsProcessingEvent(false); handleCloseActionModal(); }
   };
 
   const handlePointerDown = () => { pressStartTimeRef.current = Date.now(); };
@@ -483,15 +421,9 @@ export default function MatchPage() {
     setIsActionModalOpen(true);
   };
   
-  const handleUndoEvent = async () => {
-    if (!events.length || !currentSet) return;
-    await handleDeleteSpecificEvent(events[0].id, false);
-  };
+  const handleUndoEvent = async () => { if (!events.length || !currentSet) return; await handleDeleteSpecificEvent(events[0].id, false); };
   const handleOpenEditModal = (event: Event) => {
-    if (!event.playerId || !ACTION_DEFINITIONS[event.action as ActionKey]) {
-      alert("チームに関するプレーは、ここから編集できません。");
-      return;
-    }
+    if (!event.playerId || !ACTION_DEFINITIONS[event.action as ActionKey]) { alert("チームに関するプレーは、ここから編集できません。"); return; }
     const player = players.find(p => p.id === event.playerId);
     if (!player) { setError("編集対象の選手が見つかりません。"); return; }
     setEditingEvent({ id: event.id, player, action: event.action as ActionKey, result: event.result });
@@ -503,10 +435,8 @@ export default function MatchPage() {
     let our = 0, opp = 0;
     for (const d of docs) {
       if (excludeId && d.id === excludeId) continue;
-      const data = d.data();
-      const isOv = override && d.id === override.id;
-      const a = isOv ? override!.action : data.action;
-      const r = isOv ? override!.result : data.result;
+      const data = d.data(); const isOv = override && d.id === override.id;
+      const a = isOv ? override!.action : data.action; const r = isOv ? override!.result : data.result;
       const { scoreChangeOur, scoreChangeOpponent } = calculateScoreChange(a, r);
       our += scoreChangeOur; opp += scoreChangeOpponent;
     }
@@ -527,10 +457,7 @@ export default function MatchPage() {
       });
       if (isAllEventsModalOpen) setIsAllEventsModalOpen(false);
       if (isEditModalOpen) handleCloseEditModal();
-    } catch (e) {
-      console.error(e);
-      setError("プレーの削除に失敗しました。");
-    }
+    } catch (e) { console.error(e); setError("プレーの削除に失敗しました。"); }
   };
   const handleUpdateEvent = async () => {
     if (!db || !teamId || !matchId || !currentSet || !editingEvent) return;
@@ -541,45 +468,27 @@ export default function MatchPage() {
     try {
       await runTransaction(db, async (t) => {
         const all = await getDocs(query(eventsRef, orderBy("createdAt", "asc")));
-        const { our, opp } = recomputeScores(all.docs, undefined, {
-          id: editingEvent.id, action: actionToRecord, result: editingEvent.result,
-        });
+        const { our, opp } = recomputeScores(all.docs, undefined, { id: editingEvent.id, action: actionToRecord, result: editingEvent.result, });
         t.update(eventRef, {
-          playerId: editingEvent.player.id,
-          playerName: editingEvent.player.displayName,
-          action: actionToRecord,
-          result: editingEvent.result,
-          updatedAt: serverTimestamp(),
+          playerId: editingEvent.player.id, playerName: editingEvent.player.displayName,
+          action: actionToRecord, result: editingEvent.result, updatedAt: serverTimestamp(),
         });
         t.update(setRef, { ourScore: our, opponentScore: opp, updatedAt: serverTimestamp() });
       });
       handleCloseEditModal();
-    } catch (e) {
-      console.error(e);
-      setError("プレーの更新に失敗しました。");
-    }
+    } catch (e) { console.error(e); setError("プレーの更新に失敗しました。"); }
   };
 
   const openSubModal  = () => { setPlayerInId(""); setPlayerOutId(""); setIsSubModalOpen(true); };
   const closeSubModal = () => setIsSubModalOpen(false);
   const handleSubstitutePlayer = async () => {
-    if (!db || !teamId || !matchId || !playerInId || !playerOutId || !currentSet) {
-      alert("交代する選手を両方選択してください。");
-      return;
-    }
+    if (!db || !teamId || !matchId || !playerInId || !playerOutId || !currentSet) { alert("交代する選手を両方選択してください。"); return; }
     const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`).withConverter(setConverter);
     const playerInObject = players.find(p => p.id === playerInId);
     if (!playerInObject) { setError("交代加入する選手の情報が見つかりません。"); return; }
-    const newRoster = currentSet.roster.map(rp =>
-      rp.playerId === playerOutId ? { ...rp, playerId: playerInObject.id, displayName: playerInObject.displayName } : rp
-    );
-    try {
-      await updateDoc(setRef, { roster: newRoster, updatedAt: serverTimestamp() });
-      closeSubModal();
-    } catch (e) {
-      console.error(e);
-      setError("選手交代の処理に失敗しました。");
-    }
+    const newRoster = currentSet.roster.map(rp => rp.playerId === playerOutId ? { ...rp, playerId: playerInObject.id, displayName: playerInObject.displayName } : rp);
+    try { await updateDoc(setRef, { roster: newRoster, updatedAt: serverTimestamp() }); closeSubModal();
+    } catch (e) { console.error(e); setError("選手交代の処理に失敗しました。"); }
   };
 
   const subPlayers = useMemo(() => {
@@ -587,6 +496,31 @@ export default function MatchPage() {
     const onCourt = new Set(currentSet.roster.map(p => p.playerId));
     return players.filter(p => !onCourt.has(p.id));
   }, [currentSet, players]);
+  
+  // ★ 新規選手追加（モーダル内）
+  const handleAddPlayerInMatch = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!db || !teamId || !newPlayerName.trim()) return;
+    try {
+      await addDoc(collection(db, `teams/${teamId}/players`), {
+        displayName: newPlayerName.trim(), active: true,
+        createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      });
+      setNewPlayerName('');
+    } catch (err) { console.error(err); setError("試合中の選手追加に失敗しました。"); }
+  };
+
+  // ★ ロスター更新
+  const handleUpdateRoster = async () => {
+    if (!db || !teamId || !matchId || !currentSet) return;
+    if (roster.size < 1) { alert("少なくとも1人の選手をポジションに設定してください。"); return; }
+    try {
+      const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`);
+      await updateDoc(setRef, { roster: Array.from(roster.values()), updatedAt: serverTimestamp() });
+      alert("ロスターを更新しました。");
+      handleCloseRosterModal();
+    } catch (err) { console.error(err); setError("ロスターの更新に失敗しました。"); }
+  };
 
   if (loading || !teamInfo) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合データを読み込んでいます...</p></div>;
   if (error) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></div>;
@@ -632,12 +566,12 @@ export default function MatchPage() {
                       <>
                         <button onClick={handleUndoEvent} className="px-3 py-2 bg-yellow-600 text-white text-sm font-bold rounded-md hover:bg-yellow-700">取消</button>
                         <button onClick={openSubModal} className="px-3 py-2 bg-green-600 text-white text-sm font-bold rounded-md hover:bg-green-700">選手交代</button>
+                        <button onClick={() => handleOpenRosterModal()} className="px-3 py-2 bg-purple-600 text-white text-sm font-bold rounded-md hover:bg-purple-700">ロスター編集</button>
                         <button onClick={handleFinishSet} className="px-3 py-2 bg-red-600 text-white text-sm font-bold rounded-md hover:bg-red-700">セット終了</button>
                       </>
                     ) : (
                       <>
-                        <button onClick={openSubModal} className="px-3 py-2 bg-green-600 text-white text-sm font-bold rounded-md hover:bg-green-700">選手交代</button>
-                        <button onClick={() => handleOpenRosterModal(currentSet)} className="px-3 py-2 bg-purple-600 text-white text-sm font-bold rounded-md hover:bg-purple-700">ロスター編集</button>
+                        <button onClick={() => handleOpenRosterModal()} className="px-3 py-2 bg-purple-600 text-white text-sm font-bold rounded-md hover:bg-purple-700">ロスター編集</button>
                       </>
                     )}
                   </div>
@@ -702,9 +636,18 @@ export default function MatchPage() {
       {isRosterModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4">
           <div className="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-2xl">
-            <h2 className="text-2xl font-bold mb-2 text-gray-900">{isPreparingNextSet ? `Set ${nextSetNumberPreview ?? Math.max(0, ...sets.map(s => s.setNumber)) + 1} のスターティングメンバー選択` : currentSet && currentSet.status === "finished" ? `Set ${currentSet.setNumber} のロスターを編集` : "スターティングメンバー選択"}</h2>
-            {isPreparingNextSet && <p className="mb-4 text-sm text-gray-600">直前のロスターを引き継いでいます。必要に応じて調整して「セット開始」を押してください。</p>}
-            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-4">
+            <h2 className="text-2xl font-bold mb-2 text-gray-900">{isPreparingNextSet ? `Set ${nextSetNumberPreview ?? ''} のメンバー選択` : `Set ${currentSet?.setNumber} のロスター編集`}</h2>
+            {!isPreparingNextSet && <p className="mb-4 text-sm text-gray-600">選手の追加、ポジション変更、控えへの移動が可能です。</p>}
+            
+            <div className="my-4 p-4 border rounded-md bg-gray-50">
+              <h3 className="text-lg font-semibold mb-2 text-gray-800">新しい選手をチームに追加</h3>
+              <form onSubmit={handleAddPlayerInMatch} className="flex gap-2">
+                <input type="text" value={newPlayerName} onChange={(e) => setNewPlayerName(e.target.value)} placeholder="選手名" className="flex-grow border border-gray-300 p-2 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                <button type="submit" className="bg-green-500 text-white font-bold py-2 px-4 rounded-md hover:bg-green-600 transition-colors">追加</button>
+              </form>
+            </div>
+
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-4">
               {players.map(p => (
                 <div key={p.id} className="flex flex-col sm:flex-row items-center justify-between border-b py-4">
                   <span className="text-lg text-gray-900 font-medium mb-3 sm:mb-0">{p.displayName}</span>
@@ -721,19 +664,8 @@ export default function MatchPage() {
               <button onClick={handleCloseRosterModal} className="px-6 py-3 bg-gray-200 text-gray-900 font-bold rounded-md hover:bg-gray-300">キャンセル</button>
               {isPreparingNextSet ? (
                 <button onClick={handleStartSet} className="px-6 py-3 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700">セット開始</button>
-              ) : currentSet && currentSet.status === "finished" ? (
-                <button onClick={async () => {
-                  if (!db || !teamId || !matchId || !currentSet) return;
-                  if (roster.size < 1) { alert("少なくとも1人の選手をポジションに設定してください。"); return; }
-                  try {
-                    const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`).withConverter(setConverter);
-                    await updateDoc(setRef, { roster: Array.from(roster.values()), updatedAt: serverTimestamp() });
-                    alert("ロスターを更新しました。");
-                    handleCloseRosterModal();
-                  } catch { setError("ロスターの更新に失敗しました。"); }
-                }} className="px-6 py-3 bg-purple-600 text-white font-bold rounded-md hover:bg-purple-700">ロスターを更新</button>
               ) : (
-                <button onClick={handleStartSet} className="px-6 py-3 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700">セット開始</button>
+                <button onClick={handleUpdateRoster} className="px-6 py-3 bg-purple-600 text-white font-bold rounded-md hover:bg-purple-700">ロスターを更新</button>
               )}
             </div>
           </div>
@@ -745,23 +677,12 @@ export default function MatchPage() {
           <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
             <h2 className="text-2xl font-bold mb-6 text-gray-900">{selectedPlayer.displayName}のプレー</h2>
             <div className="grid grid-cols-2 gap-3">
-              {(
-                longPressMode === 'success'
-                  ? QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス') || a.result === '効果')
-                  : QUICK_ACTIONS.filter(a => !a.result.includes('成功') && !a.result.includes('パス') && a.result !== '効果')
-              ).map(item => (
-                <button
-                  key={item.label}
-                  onClick={() => handleRecordEvent(item.action, item.result)}
-                  disabled={isProcessingEvent}
-                  className={`p-4 rounded-md font-bold text-lg text-white shadow-md ${item.color} hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed`}
-                >
+              {(longPressMode === 'success' ? QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス') || a.result === '効果') : QUICK_ACTIONS.filter(a => !a.result.includes('成功') && !a.result.includes('パス') && a.result !== '効果')).map(item => (
+                <button key={item.label} onClick={() => handleRecordEvent(item.action, item.result)} disabled={isProcessingEvent} className={`p-4 rounded-md font-bold text-lg text-white shadow-md ${item.color} hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed`}>
                   {isProcessingEvent ? '記録中...' : item.label}
                 </button>
               ))}
-              {selectedPlayer.position === 'S' && longPressMode !== 'success' && (
-                  <button onClick={() => handleRecordSimpleMiss("TOSS_MISS")} disabled={isProcessingEvent} className="p-4 rounded-md font-bold text-lg text-white shadow-md bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400">{isProcessingEvent ? '記録中...' : 'トスミス'}</button>
-              )}
+              {selectedPlayer.position === 'S' && longPressMode !== 'success' && (<button onClick={() => handleRecordSimpleMiss("TOSS_MISS")} disabled={isProcessingEvent} className="p-4 rounded-md font-bold text-lg text-white shadow-md bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400">{isProcessingEvent ? '記録中...' : 'トスミス'}</button>)}
             </div>
             <button onClick={handleCloseActionModal} className="w-full mt-8 px-4 py-3 bg-gray-500 text-white font-bold rounded-md hover:bg-gray-600">閉じる</button>
           </div>
@@ -773,22 +694,9 @@ export default function MatchPage() {
           <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
             <h2 className="text-2xl font-bold mb-6 text-gray-900">プレーを編集</h2>
             <div className="space-y-5">
-              <div>
-                <label className="block text-base font-medium text-gray-700">選手</label>
-                <select value={editingEvent.player.id} onChange={(e) => setEditingEvent({ ...editingEvent, player: players.find(p => p.id === e.target.value)! })} className="w-full mt-1 border p-3 rounded-md text-base">{players.map(p => <option key={p.id} value={p.id}>{p.displayName}</option>)}</select>
-              </div>
-              <div>
-                <label className="block text-base font-medium text-gray-700">プレー</label>
-                <select value={editingEvent.action} onChange={(e) => setEditingEvent({ ...editingEvent, action: e.target.value as ActionKey, result: ACTION_DEFINITIONS[e.target.value as ActionKey].results[0] })} className="w-full mt-1 border p-3 rounded-md text-base">
-                  {Object.entries(ACTION_DEFINITIONS).map(([key, { label }]) => <option key={key} value={key}>{label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-base font-medium text-gray-700">結果</label>
-                <select value={editingEvent.result} onChange={(e) => setEditingEvent({ ...editingEvent, result: e.target.value })} className="w-full mt-1 border p-3 rounded-md text-base">
-                  {ACTION_DEFINITIONS[editingEvent.action].results.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
+              <div> <label className="block text-base font-medium text-gray-700">選手</label> <select value={editingEvent.player.id} onChange={(e) => setEditingEvent({ ...editingEvent, player: players.find(p => p.id === e.target.value)! })} className="w-full mt-1 border p-3 rounded-md text-base">{players.map(p => <option key={p.id} value={p.id}>{p.displayName}</option>)}</select> </div>
+              <div> <label className="block text-base font-medium text-gray-700">プレー</label> <select value={editingEvent.action} onChange={(e) => setEditingEvent({ ...editingEvent, action: e.target.value as ActionKey, result: ACTION_DEFINITIONS[e.target.value as ActionKey].results[0] })} className="w-full mt-1 border p-3 rounded-md text-base">{Object.entries(ACTION_DEFINITIONS).map(([key, { label }]) => <option key={key} value={key}>{label}</option>)}</select> </div>
+              <div> <label className="block text-base font-medium text-gray-700">結果</label> <select value={editingEvent.result} onChange={(e) => setEditingEvent({ ...editingEvent, result: e.target.value })} className="w-full mt-1 border p-3 rounded-md text-base">{ACTION_DEFINITIONS[editingEvent.action].results.map(r => <option key={r} value={r}>{r}</option>)}</select> </div>
             </div>
             <div className="flex justify-between items-center mt-8">
               <button onClick={() => handleDeleteSpecificEvent(editingEvent.id)} className="px-5 py-3 bg-red-600 text-white font-bold rounded-md hover:bg-red-700">このプレーを削除</button>
@@ -816,9 +724,7 @@ export default function MatchPage() {
                       <p className="text-base font-medium text-gray-800">{event.playerName}: <span className="font-normal text-gray-700">{ACTION_DEFINITIONS[event.action as ActionKey]?.label || event.action} - {event.result || "N/A"}</span></p>
                       <div className="flex items-center mt-1">
                         <p className="text-sm text-gray-600">{event.createdAt?.toDate().toLocaleTimeString("ja-JP", timeFormatOptions)}</p>
-                        {event.ourScore_at_event != null && event.opponentScore_at_event != null && (
-                          <p className="ml-4 text-sm font-mono tracking-wider text-gray-800 bg-gray-100 px-2 py-0.5 rounded">{event.ourScore_at_event} - {event.opponentScore_at_event}</p>
-                        )}
+                        {event.ourScore_at_event != null && event.opponentScore_at_event != null && (<p className="ml-4 text-sm font-mono tracking-wider text-gray-800 bg-gray-100 px-2 py-0.5 rounded">{event.ourScore_at_event} - {event.opponentScore_at_event}</p>)}
                       </div>
                     </div>
                     <div className="flex gap-2">
