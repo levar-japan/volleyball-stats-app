@@ -17,7 +17,6 @@ import {
   orderBy,
   FirestoreDataConverter,
   QueryDocumentSnapshot,
-  DocumentSnapshot,
   writeBatch, // writeBatch をインポート
   increment,  // increment をインポート
   addDoc,     // addDoc をインポート
@@ -167,6 +166,7 @@ export default function MatchPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeSet, setActiveSet] = useState<Set | null>(null);
   const [viewingSetId, setViewingSetId] = useState<string | null>(null);
+  const viewingSetIdRef = useRef<string | null>(null);
   const currentSet = useMemo(() => (viewingSetId ? sets.find(s => s.id === viewingSetId) ?? null : null), [sets, viewingSetId]);
   const [isPreparingNextSet, setIsPreparingNextSet] = useState(false);
   const [nextSetNumberPreview, setNextSetNumberPreview] = useState<number | null>(null);
@@ -210,6 +210,10 @@ export default function MatchPage() {
   }, [db, teamId, matchId]);
 
   useEffect(() => {
+    viewingSetIdRef.current = viewingSetId;
+  }, [viewingSetId]);
+
+  useEffect(() => {
     if (!db || !teamId || !matchId) return;
     const setsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets`).withConverter(setConverter);
     const qy = query(setsRef, orderBy("setNumber", "asc"));
@@ -219,17 +223,23 @@ export default function MatchPage() {
       setSets(list);
       const ongoing = list.find(s => s.status === "ongoing") ?? null;
       setActiveSet(ongoing);
+      const currentSelectionId = viewingSetIdRef.current;
       if (isInitial) {
         isInitial = false;
         const initial = ongoing ?? (list.length ? list[list.length - 1] : null);
-        setViewingSetId(initial?.id ?? null);
-      } else if (viewingSetId && !list.some(s => s.id === viewingSetId)) {
-        const fallback = ongoing ?? (list.length ? list[list.length - 1] : null);
-        setViewingSetId(fallback?.id ?? null);
+        setViewingSetId(() => initial?.id ?? null);
+        return;
       }
+      if (!currentSelectionId) return;
+      if (list.some(s => s.id === currentSelectionId)) return;
+      const fallback = ongoing ?? (list.length ? list[list.length - 1] : null);
+      setViewingSetId(prev => {
+        const nextId = fallback?.id ?? null;
+        return prev === nextId ? prev : nextId;
+      });
     }, () => setError("セット情報の取得に失敗しました。"));
     return () => { unsets(); };
-  }, [db, teamId, matchId, viewingSetId]);
+  }, [db, teamId, matchId]);
 
   useEffect(() => {
     if (!db || !teamId || !matchId || !currentSet?.id) { setEvents([]); return; }
