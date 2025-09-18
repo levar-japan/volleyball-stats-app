@@ -180,7 +180,7 @@ export default function MatchPage() {
   const [playerOutId, setPlayerOutId] = useState("");
   const [playerInId, setPlayerInId] = useState("");
   const [isProcessingEvent, setIsProcessingEvent] = useState(false);
-  const [newPlayerName, setNewPlayerName] = useState(''); // ★ 新規追加選手名
+  const [newPlayerName, setNewPlayerName] = useState('');
   
   type LongPressMode = 'success' | null;
   const [longPressMode, setLongPressMode] = useState<LongPressMode>(null);
@@ -205,7 +205,6 @@ export default function MatchPage() {
       else setError("試合が見つかりません。");
     }, () => setError("試合情報の取得に失敗しました。"));
     
-    // ★ 選手リストをリアルタイムで監視するように変更
     const unplayers = onSnapshot(playersRef, (snapshot) => {
         setPlayers(snapshot.docs.map(d => withId(d)) as Player[]);
         if (loading) setLoading(false);
@@ -278,11 +277,7 @@ export default function MatchPage() {
     }
     setIsRosterModalOpen(true);
   };
-  const handleCloseRosterModal = () => {
-    setIsRosterModalOpen(false);
-    setIsPreparingNextSet(false);
-    setNextSetNumberPreview(null);
-  };
+  const handleCloseRosterModal = () => { setIsRosterModalOpen(false); setIsPreparingNextSet(false); setNextSetNumberPreview(null); };
   const handleRosterChange = (playerId: string, displayName: string, position: string) => {
     setRoster(prev => {
       const n = new Map(prev);
@@ -298,9 +293,7 @@ export default function MatchPage() {
       const m = new Map<string, RosterPlayer>();
       base.roster.forEach(p => m.set(p.playerId, p));
       setRoster(m);
-    } else {
-      setRoster(new Map());
-    }
+    } else { setRoster(new Map()); }
     const nextNo = Math.max(0, ...sets.map(s => s.setNumber)) + 1;
     setNextSetNumberPreview(nextNo);
     setIsPreparingNextSet(true);
@@ -321,9 +314,7 @@ export default function MatchPage() {
       };
       const newSetDocRef = await addDoc(setsRef, newSet);
       setViewingSetId(newSetDocRef.id);
-      if (match?.status !== 'finished') {
-        await updateDoc(matchRef, { status: "ongoing", updatedAt: serverTimestamp() });
-      }
+      if (match?.status !== 'finished') { await updateDoc(matchRef, { status: "ongoing", updatedAt: serverTimestamp() }); }
       setIsPreparingNextSet(false);
       setNextSetNumberPreview(null);
       handleCloseRosterModal();
@@ -369,9 +360,7 @@ export default function MatchPage() {
         action: actionToRecord, result, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
       });
       if (scoreChangeOur > 0 || scoreChangeOpponent > 0) {
-        batch.update(setRef, {
-          ourScore: increment(scoreChangeOur), opponentScore: increment(scoreChangeOpponent), updatedAt: serverTimestamp(),
-        });
+        batch.update(setRef, { ourScore: increment(scoreChangeOur), opponentScore: increment(scoreChangeOpponent), updatedAt: serverTimestamp(), });
       }
       await batch.commit();
     } catch (e) { console.error(e); setError("記録の保存に失敗しました。");
@@ -387,13 +376,8 @@ export default function MatchPage() {
       const { scoreChangeOur, scoreChangeOpponent } = calculateScoreChange(action, "");
       const batch = writeBatch(db);
       const newEventRef = doc(eventsRef);
-      batch.set(newEventRef, {
-        playerId: null, playerName: "チーム", position: null, action, result: "",
-        createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
-      });
-      batch.update(setRef, {
-        ourScore: increment(scoreChangeOur), opponentScore: increment(scoreChangeOpponent), updatedAt: serverTimestamp(),
-      });
+      batch.set(newEventRef, { playerId: null, playerName: "チーム", position: null, action, result: "", createdAt: serverTimestamp(), updatedAt: serverTimestamp(), });
+      batch.update(setRef, { ourScore: increment(scoreChangeOur), opponentScore: increment(scoreChangeOpponent), updatedAt: serverTimestamp(), });
       await batch.commit();
     } catch (e) { console.error(e); setError("チームプレーの記録に失敗しました。");
     } finally { setIsProcessingEvent(false); }
@@ -497,7 +481,6 @@ export default function MatchPage() {
     return players.filter(p => !onCourt.has(p.id));
   }, [currentSet, players]);
   
-  // ★ 新規選手追加（モーダル内）
   const handleAddPlayerInMatch = async (e: FormEvent) => {
     e.preventDefault();
     if (!db || !teamId || !newPlayerName.trim()) return;
@@ -510,7 +493,6 @@ export default function MatchPage() {
     } catch (err) { console.error(err); setError("試合中の選手追加に失敗しました。"); }
   };
 
-  // ★ ロスター更新
   const handleUpdateRoster = async () => {
     if (!db || !teamId || !matchId || !currentSet) return;
     if (roster.size < 1) { alert("少なくとも1人の選手をポジションに設定してください。"); return; }
@@ -521,6 +503,30 @@ export default function MatchPage() {
       handleCloseRosterModal();
     } catch (err) { console.error(err); setError("ロスターの更新に失敗しました。"); }
   };
+
+  // ★★★★★ 修正箇所 ★★★★★
+  // 表示するアクションボタンを useMemo で計算
+  const displayedQuickActions = useMemo(() => {
+    if (!selectedPlayer) return [];
+
+    // 1. ショートタップか長押しかで基本リストを決定
+    let actions = longPressMode === 'success'
+        ? QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス') || a.result === '効果')
+        : QUICK_ACTIONS.filter(a => !a.result.includes('成功') && !a.result.includes('パス') && a.result !== '効果');
+
+    // 2. リベロ(L)の場合、特定のアクションを除外
+    if (selectedPlayer.position === 'L') {
+        actions = actions.filter(item => 
+            item.action !== 'ATTACK' && 
+            item.action !== 'BLOCK' && 
+            item.action !== 'SERVE'
+        );
+    }
+
+    return actions;
+  }, [selectedPlayer, longPressMode]);
+  // ★★★★★ 修正箇所ここまで ★★★★★
+
 
   if (loading || !teamInfo) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p>試合データを読み込んでいます...</p></div>;
   if (error) return <div className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></div>;
@@ -677,12 +683,14 @@ export default function MatchPage() {
           <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
             <h2 className="text-2xl font-bold mb-6 text-gray-900">{selectedPlayer.displayName}のプレー</h2>
             <div className="grid grid-cols-2 gap-3">
-              {(longPressMode === 'success' ? QUICK_ACTIONS.filter(a => a.result.includes('成功') || a.result.includes('パス') || a.result === '効果') : QUICK_ACTIONS.filter(a => !a.result.includes('成功') && !a.result.includes('パス') && a.result !== '効果')).map(item => (
+              {displayedQuickActions.map(item => (
                 <button key={item.label} onClick={() => handleRecordEvent(item.action, item.result)} disabled={isProcessingEvent} className={`p-4 rounded-md font-bold text-lg text-white shadow-md ${item.color} hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed`}>
                   {isProcessingEvent ? '記録中...' : item.label}
                 </button>
               ))}
-              {selectedPlayer.position === 'S' && longPressMode !== 'success' && (<button onClick={() => handleRecordSimpleMiss("TOSS_MISS")} disabled={isProcessingEvent} className="p-4 rounded-md font-bold text-lg text-white shadow-md bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400">{isProcessingEvent ? '記録中...' : 'トスミス'}</button>)}
+              {selectedPlayer.position === 'S' && longPressMode === 'success' && (
+                  <button onClick={() => handleRecordSimpleMiss("TOSS_MISS")} disabled={isProcessingEvent} className="p-4 rounded-md font-bold text-lg text-white shadow-md bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400">{isProcessingEvent ? '記録中...' : 'トスミス'}</button>
+              )}
             </div>
             <button onClick={handleCloseActionModal} className="w-full mt-8 px-4 py-3 bg-gray-500 text-white font-bold rounded-md hover:bg-gray-600">閉じる</button>
           </div>
