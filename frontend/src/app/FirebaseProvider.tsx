@@ -40,7 +40,7 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
       try {
         connectFirestoreEmulator(firestoreDb, '127.0.0.1', 8080);
         console.log("Firestore Emulator connected.");
-      } catch (e) {
+      } catch {
         // console.warn("Firestore Emulator already connected.");
       }
     }
