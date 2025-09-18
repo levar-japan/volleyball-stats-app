@@ -192,25 +192,31 @@ export default function MatchPage() {
     if (storedTeam) { setTeamInfo(JSON.parse(storedTeam)); }
   }, []);
   
+  // ★★★★★ 修正箇所 ★★★★★
   useEffect(() => {
     if (!db || !teamId || !matchId) return;
+    setLoading(true);
+    
     const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`).withConverter(matchConverter);
     const playersRef = collection(db, `teams/${teamId}/players`).withConverter(playerConverter);
-    setLoading(true);
+
     const unmatch = onSnapshot(matchRef, (docSnap) => {
       if (docSnap.exists()) setMatch({ id: docSnap.id, ...docSnap.data() } as Match);
       else setError("試合が見つかりません。");
     }, () => setError("試合情報の取得に失敗しました。"));
+    
     const unplayers = onSnapshot(playersRef, (snapshot) => {
         setPlayers(snapshot.docs.map(d => withId(d)) as Player[]);
-        if (loading) setLoading(false);
+        setLoading(false); // 選手リストの読み込みが完了したらローディングを終了
     }, (err) => {
         console.error("選手の読み込みに失敗しました: ", err);
         setError("選手の読み込みに失敗しました。");
         setLoading(false);
     });
+
     return () => { unmatch(); unplayers(); };
-  }, [db, teamId, matchId, loading]);
+  }, [db, teamId, matchId]); // ★ 依存配列から `loading` を削除
+  // ★★★★★ 修正箇所ここまで ★★★★★
 
   useEffect(() => {
     if (!db || !teamId || !matchId) return;
@@ -319,14 +325,11 @@ export default function MatchPage() {
     } catch (e) { console.error(e); setError("セットの終了処理に失敗しました。"); }
   };
 
-  // ★★★★★ 新規追加機能 ★★★★★
   const handleDeleteSet = async (setId: string) => {
     if (!db || !teamId || !matchId) return;
     const setToDelete = sets.find(s => s.id === setId);
     const setNumber = setToDelete ? setToDelete.setNumber : '';
-
     if (!window.confirm(`Set ${setNumber} とそのセット内の全てのプレー記録を完全に削除します。この操作は元に戻せません。よろしいですか？`)) return;
-
     try {
       const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${setId}`);
       const eventsRef = collection(setRef, 'events');
@@ -340,7 +343,6 @@ export default function MatchPage() {
       setError("セットの削除に失敗しました。");
     }
   };
-  // ★★★★★ ここまで ★★★★★
 
   const handleFinishMatch = async () => {
     if (!db || !teamId || !matchId) return;
@@ -574,11 +576,8 @@ export default function MatchPage() {
                         <button onClick={handleFinishSet} className="px-3 py-2 bg-red-600 text-white text-sm font-bold rounded-md hover:bg-red-700">セット終了</button>
                       </>
                     ) : (
-                      <>
-                        <button onClick={() => handleOpenRosterModal()} className="px-3 py-2 bg-purple-600 text-white text-sm font-bold rounded-md hover:bg-purple-700">ロスター編集</button>
-                      </>
+                      <button onClick={() => handleOpenRosterModal()} className="px-3 py-2 bg-purple-600 text-white text-sm font-bold rounded-md hover:bg-purple-700">ロスター編集</button>
                     )}
-                    {/* ★★★★★ 新規追加UI ★★★★★ */}
                     <button onClick={() => handleDeleteSet(currentSet.id)} className="px-3 py-2 bg-pink-700 text-white text-sm font-bold rounded-md hover:bg-pink-800">セット削除</button>
                   </div>
                 </div>
@@ -644,7 +643,6 @@ export default function MatchPage() {
           <div className="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-2xl">
             <h2 className="text-2xl font-bold mb-2 text-gray-900">{isPreparingNextSet ? `Set ${nextSetNumberPreview ?? ''} のメンバー選択` : `Set ${currentSet?.setNumber} のロスター編集`}</h2>
             {!isPreparingNextSet && <p className="mb-4 text-sm text-gray-600">選手の追加、ポジション変更、控えへの移動が可能です。</p>}
-            
             <div className="my-4 p-4 border rounded-md bg-gray-50">
               <h3 className="text-lg font-semibold mb-2 text-gray-800">新しい選手をチームに追加</h3>
               <form onSubmit={handleAddPlayerInMatch} className="flex gap-2">
@@ -652,7 +650,6 @@ export default function MatchPage() {
                 <button type="submit" className="bg-green-500 text-white font-bold py-2 px-4 rounded-md hover:bg-green-600 transition-colors">追加</button>
               </form>
             </div>
-
             <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-4">
               {players.map(p => (
                 <div key={p.id} className="flex flex-col sm:flex-row items-center justify-between border-b py-4">
