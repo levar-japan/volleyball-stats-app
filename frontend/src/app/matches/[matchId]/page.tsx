@@ -308,7 +308,11 @@ export default function MatchPage() {
       };
       const newSetDocRef = await addDoc(setsRef, newSet);
       setViewingSetId(newSetDocRef.id);
-      if (match?.status !== 'finished') { await updateDoc(matchRef, { status: "ongoing", updatedAt: serverTimestamp() }); }
+      
+      // ★★★★★ 修正箇所 ★★★★★
+      // 終了した試合にセットを追加した場合、ステータスを `ongoing` に戻す
+      await updateDoc(matchRef, { status: "ongoing", updatedAt: serverTimestamp() });
+
       setIsPreparingNextSet(false);
       setNextSetNumberPreview(null);
       handleCloseRosterModal();
@@ -323,46 +327,27 @@ export default function MatchPage() {
     } catch (e) { console.error(e); setError("セットの終了処理に失敗しました。"); }
   };
 
-  // ★★★★★ 修正・強化箇所 ★★★★★
   const handleDeleteSet = async (setId: string) => {
     if (!db || !teamId || !matchId) return;
     const setToDelete = sets.find(s => s.id === setId);
-    if (!setToDelete) {
-      setError("削除対象のセットが見つかりません。");
-      return;
-    }
+    if (!setToDelete) { setError("削除対象のセットが見つかりません。"); return; }
     const { setNumber: deletedSetNumber } = setToDelete;
-
     if (!window.confirm(`Set ${deletedSetNumber} とそのセット内の全てのプレー記録を完全に削除します。この操作は元に戻せません。よろしいですか？`)) return;
-
     try {
       const batch = writeBatch(db);
-      
-      // 1. 削除対象セットのイベントをすべて削除
       const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${setId}`);
       const eventsRef = collection(setRef, 'events');
       const eventsSnap = await getDocs(eventsRef);
       eventsSnap.forEach(eventDoc => { batch.delete(eventDoc.ref); });
-
-      // 2. 削除対象セット自体を削除
       batch.delete(setRef);
-
-      // 3. これ以降のセット番号を繰り下げ
       const setsToUpdate = sets.filter(s => s.setNumber > deletedSetNumber);
       setsToUpdate.forEach(s => {
         const subsequentSetRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${s.id}`);
         batch.update(subsequentSetRef, { setNumber: s.setNumber - 1 });
       });
-
-      // 4. バッチ処理を実行
       await batch.commit();
-
-    } catch (err) {
-      console.error("セットの削除と繰り下げ処理に失敗しました: ", err);
-      setError("セットの削除に失敗しました。");
-    }
+    } catch (err) { console.error("セットの削除と繰り下げ処理に失敗しました: ", err); setError("セットの削除に失敗しました。"); }
   };
-  // ★★★★★ 修正箇所ここまで ★★★★★
 
   const handleFinishMatch = async () => {
     if (!db || !teamId || !matchId) return;
@@ -576,7 +561,9 @@ export default function MatchPage() {
               Set {s.setNumber}{s.status === "ongoing" ? " (記録中)" : ""}
             </button>
           ))}
-          {!activeSet && match.status !== "finished" && <button onClick={handlePrepareNextSet} className="px-4 py-2 rounded-md font-bold text-sm bg-green-500 text-white hover:bg-green-600 whitespace-nowrap">＋ 次のセット</button>}
+          {/* ★★★★★ 修正箇所 ★★★★★ */}
+          {/* match.status のチェックを削除し、常にセット追加ボタンを表示 */}
+          {!activeSet && <button onClick={handlePrepareNextSet} className="px-4 py-2 rounded-md font-bold text-sm bg-green-500 text-white hover:bg-green-600 whitespace-nowrap">＋ 次のセット</button>}
         </div>
 
         {currentSet ? (
@@ -586,17 +573,15 @@ export default function MatchPage() {
                 <div className="text-center"><p className="text-xl font-bold text-gray-800">自チーム</p><p className="text-6xl font-bold text-blue-600 tracking-tighter">{currentSet.ourScore}</p></div>
                 <div className="text-center">
                   <p className="text-xl font-bold text-gray-800">Set {currentSet.setNumber}</p>
+                  {/* ★★★★★ 修正箇所 ★★★★★ */}
+                  {/* ボタンの表示ロジックを統一・整理 */}
                   <div className="flex flex-wrap justify-center gap-2 mt-2">
                     <button onClick={() => setIsAllEventsModalOpen(true)} className="px-3 py-2 bg-gray-200 text-gray-900 text-sm font-bold rounded-md hover:bg-gray-300">全履歴</button>
-                    {currentSet.status === "ongoing" ? (
-                      <>
-                        <button onClick={handleUndoEvent} className="px-3 py-2 bg-yellow-600 text-white text-sm font-bold rounded-md hover:bg-yellow-700">取消</button>
-                        <button onClick={openSubModal} className="px-3 py-2 bg-green-600 text-white text-sm font-bold rounded-md hover:bg-green-700">選手交代</button>
-                        <button onClick={() => handleOpenRosterModal()} className="px-3 py-2 bg-purple-600 text-white text-sm font-bold rounded-md hover:bg-purple-700">ロスター編集</button>
+                    <button onClick={handleUndoEvent} className="px-3 py-2 bg-yellow-600 text-white text-sm font-bold rounded-md hover:bg-yellow-700">取消</button>
+                    <button onClick={openSubModal} className="px-3 py-2 bg-green-600 text-white text-sm font-bold rounded-md hover:bg-green-700">選手交代</button>
+                    <button onClick={() => handleOpenRosterModal()} className="px-3 py-2 bg-purple-600 text-white text-sm font-bold rounded-md hover:bg-purple-700">ロスター編集</button>
+                    {currentSet.status === "ongoing" && (
                         <button onClick={handleFinishSet} className="px-3 py-2 bg-red-600 text-white text-sm font-bold rounded-md hover:bg-red-700">セット終了</button>
-                      </>
-                    ) : (
-                      <button onClick={() => handleOpenRosterModal()} className="px-3 py-2 bg-purple-600 text-white text-sm font-bold rounded-md hover:bg-purple-700">ロスター編集</button>
                     )}
                     <button onClick={() => handleDeleteSet(currentSet.id)} className="px-3 py-2 bg-pink-700 text-white text-sm font-bold rounded-md hover:bg-pink-800">セット削除</button>
                   </div>
@@ -640,21 +625,13 @@ export default function MatchPage() {
             </div>
           </div>
         ) : (
-          <>
-            {match.status === "finished" ? (
-              <div className="text-center bg-white p-10 rounded-lg shadow-md">
-                <h2 className="text-3xl font-bold text-gray-800 mb-4">この試合は終了しています</h2>
-                <p className="text-gray-700 mb-8 text-lg">結果・集計を確認できます。</p>
-                <Link href={`/matches/${matchId}/summary`}><span className="inline-block bg-gray-700 hover:bg-gray-800 text-white font-bold py-4 px-8 rounded-lg shadow-md text-lg">集計を見る</span></Link>
-              </div>
-            ) : (
-              <div className="text-center bg-white p-10 rounded-lg shadow-md">
-                <h2 className="text-3xl font-bold text-gray-800 mb-4">最初のセットを開始</h2>
-                <p className="text-gray-700 mb-8 text-lg">出場する選手とポジションを選択してください。</p>
-                <button onClick={handlePrepareNextSet} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg shadow-md text-lg">ロスターを選択してセット開始</button>
-              </div>
-            )}
-          </>
+            // ★★★★★ 修正箇所 ★★★★★
+            // match.status のチェックを削除し、試合が終了していてもセットがなければ「最初のセットを開始」を表示
+            <div className="text-center bg-white p-10 rounded-lg shadow-md">
+              <h2 className="text-3xl font-bold text-gray-800 mb-4">最初のセットを開始</h2>
+              <p className="text-gray-700 mb-8 text-lg">出場する選手とポジションを選択してください。</p>
+              <button onClick={handlePrepareNextSet} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg shadow-md text-lg">ロスターを選択してセット開始</button>
+            </div>
         )}
       </div>
 
