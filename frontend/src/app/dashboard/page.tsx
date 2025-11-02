@@ -450,7 +450,7 @@ export default function DashboardPage() {
                       )}
                       <button
                         onClick={() => handleDeleteMatch(m.id)}
-                        className="px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 transition-colors opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 transition-colors"
                       >
                         削除
                       </button>
