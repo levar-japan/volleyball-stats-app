@@ -176,23 +176,57 @@ export default function SummaryPage() {
     return selected ? `Set ${selected.setNumber} のスタッツ` : 'スタッツ';
   }, [selectedSetId, sets]);
 
-  if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-100"><p>集計データを読み込んでいます...</p></main>;
-  if (error) return <main className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500 max-w-md text-center">エラー: {error}</p></main>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center animate-pulse">
+            <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          </div>
+          <p className="text-gray-600 font-medium">集計データを読み込んでいます...</p>
+        </div>
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 flex items-center justify-center">
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-red-200 max-w-md">
+          <div className="flex items-start gap-3">
+            <svg className="w-6 h-6 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-red-700 font-medium">エラー: {error}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   
   return (
-    <main className="min-h-screen bg-gray-100 p-4 sm:p-8">
-      <div className="w-full max-w-7xl mx-auto">
-        <header className="bg-white p-4 rounded-lg shadow-md mb-6">
-          <div className="flex flex-col sm:flex-row justify-between sm:items-center">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">試合結果 vs {match?.opponent || '...'}</h1>
-              <p className="text-base text-gray-700 mt-1">{headerText}</p>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50">
+      {/* Sticky Header */}
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 py-4">
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                試合結果 vs {match?.opponent || '...'}
+              </h1>
+              <p className="text-base text-gray-600 mt-1 flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                {headerText}
+              </p>
             </div>
-            <div className="flex items-center gap-3 mt-4 sm:mt-0">
+            <div className="flex items-center gap-3 flex-wrap">
               <select 
                 value={selectedSetId} 
                 onChange={(e) => setSelectedSetId(e.target.value)}
-                className="bg-gray-200 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5"
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
                 <option value="all">合計</option>
                 {sets.map(set => (
@@ -200,20 +234,32 @@ export default function SummaryPage() {
                 ))}
               </select>
               
-              <div className="flex items-center p-1 bg-gray-200 rounded-lg">
-                <button onClick={() => setViewMode('vleague')} className={`transition-colors duration-200 ease-in-out px-3 py-2 text-sm font-bold rounded-md ${viewMode === 'vleague' ? 'bg-white text-blue-600 shadow' : 'bg-transparent text-gray-500 hover:bg-white/60'}`}>Vリーグ</button>
-                <button onClick={() => setViewMode('effectiveness')} className={`transition-colors duration-200 ease-in-out px-3 py-2 text-sm font-bold rounded-md ${viewMode === 'effectiveness' ? 'bg-white text-blue-600 shadow' : 'bg-transparent text-gray-500 hover:bg-white/60'}`}>効果率</button>
-                <button onClick={() => setViewMode('count')} className={`transition-colors duration-200 ease-in-out px-3 py-2 text-sm font-bold rounded-md ${viewMode === 'count' ? 'bg-white text-blue-600 shadow' : 'bg-transparent text-gray-500 hover:bg-white/60'}`}>本数</button>
+              <div className="flex items-center p-1 bg-gray-100 rounded-lg border border-gray-200">
+                <button onClick={() => setViewMode('vleague')} className={`transition-all px-3 py-2 text-sm font-semibold rounded-md ${viewMode === 'vleague' ? 'bg-white text-indigo-600 shadow-md' : 'bg-transparent text-gray-600 hover:bg-white/60'}`}>Vリーグ</button>
+                <button onClick={() => setViewMode('effectiveness')} className={`transition-all px-3 py-2 text-sm font-semibold rounded-md ${viewMode === 'effectiveness' ? 'bg-white text-indigo-600 shadow-md' : 'bg-transparent text-gray-600 hover:bg-white/60'}`}>効果率</button>
+                <button onClick={() => setViewMode('count')} className={`transition-all px-3 py-2 text-sm font-semibold rounded-md ${viewMode === 'count' ? 'bg-white text-indigo-600 shadow-md' : 'bg-transparent text-gray-600 hover:bg-white/60'}`}>本数</button>
               </div>
               
-              <Link href={`/matches/${matchId}`}><span className="px-4 py-2 bg-blue-600 text-white text-base font-bold rounded-md hover:bg-blue-700">記録/編集</span></Link>
-              <Link href="/dashboard"><span className="px-4 py-2 bg-gray-600 text-white text-base font-bold rounded-md hover:bg-gray-700">ダッシュボード</span></Link>
+              <Link href={`/matches/${matchId}`}>
+                <span className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors">
+                  記録/編集
+                </span>
+              </Link>
+              <Link href="/dashboard">
+                <span className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-200 transition-colors">
+                  ダッシュボード
+                </span>
+              </Link>
             </div>
           </div>
-        </header>
-        <div className="overflow-x-auto bg-white rounded-lg shadow-md">
-          <table className="w-full text-sm text-left text-gray-700">
-            <thead className="text-xs text-gray-800 uppercase bg-gray-100">
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left text-gray-700">
+              <thead className="text-xs text-gray-800 uppercase bg-gray-50 border-b border-gray-200">
               <tr>
                 <th scope="col" className="px-4 py-3 sticky left-0 bg-gray-100 z-10">選手名</th>
                 <th scope="col" className="px-4 py-3 text-center">総得点</th>
@@ -254,8 +300,8 @@ export default function SummaryPage() {
               {filteredPlayers.map(player => {
                 const s = stats[player.id];
                 return (
-                  <tr key={player.id} className="bg-white border-b hover:bg-gray-50">
-                    <th scope="row" className="px-4 py-4 font-bold text-gray-900 sticky left-0 bg-white z-10">{player.displayName}</th>
+                  <tr key={player.id} className="bg-white border-b border-gray-200 hover:bg-gray-50 transition-colors">
+                    <th scope="row" className="px-4 py-4 font-bold text-gray-900 sticky left-0 bg-white z-10 border-r border-gray-200">{player.displayName}</th>
                     <td className="px-4 py-4 text-center font-bold text-gray-900">{s.total_points}</td>
                     {/* サーブ */}
                     <td className="px-4 py-4 text-center">{viewMode === 'count' ? `${s.serve_point}/${s.serve_effect}/${s.serve_success}/${s.serve_miss} (${s.serve_total})` : `${s.serve_effectiveness_rate.toFixed(1)}%`}</td>
@@ -284,11 +330,21 @@ export default function SummaryPage() {
                   </tr>
                 );
               })}
-              {filteredPlayers.length === 0 && (<tr><td colSpan={8} className="text-center py-8 text-gray-500">記録されたプレーがありません。</td></tr>)}
+              {filteredPlayers.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="text-center py-12 text-gray-500">
+                    <svg className="w-16 h-16 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    <p>記録されたプレーがありません</p>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
-      </div>
-    </main>
+        </div>
+      </main>
+    </div>
   );
 }

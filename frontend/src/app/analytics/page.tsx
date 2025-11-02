@@ -375,20 +375,44 @@ export default function AnalyticsPage() {
     };
   }, [events]);
 
-  if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-100"><p>読み込んでいます...</p></main>;
-  if (error) return <main className="flex min-h-screen items-center justify-center bg-gray-100"><p className="text-red-500">{error}</p></main>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center animate-pulse">
+            <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          </div>
+          <p className="text-gray-600 font-medium">読み込んでいます...</p>
+        </div>
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 flex items-center justify-center">
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-red-200 max-w-md">
+          <p className="text-red-700 font-medium">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-gray-100 p-4 sm:p-8">
-      <div className="w-full max-w-7xl mx-auto space-y-6">
-        <header className="bg-white p-4 rounded-lg shadow-md">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">統計分析</h1>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50">
+      {/* Sticky Header */}
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 py-4">
+            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+              統計分析
+            </h1>
             <div className="flex items-center gap-3">
               <select
                 value={selectedSeasonId}
                 onChange={(e) => setSelectedSeasonId(e.target.value)}
-                className="bg-gray-200 border border-gray-300 text-gray-900 text-sm rounded-lg p-2"
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
                 <option value="all">全シーズン</option>
                 {seasons.map(season => (
@@ -396,42 +420,46 @@ export default function AnalyticsPage() {
                 ))}
               </select>
               <Link href="/dashboard">
-                <span className="px-4 py-2 bg-blue-600 text-white text-base font-bold rounded-md hover:bg-blue-700">ダッシュボード</span>
+                <span className="px-4 py-2 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-colors">
+                  ダッシュボード
+                </span>
               </Link>
             </div>
           </div>
-        </header>
+        </div>
+      </header>
 
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* タブ切り替え */}
-        <div className="bg-white p-2 rounded-lg shadow-md">
+        <div className="bg-white rounded-xl shadow-md border border-gray-200 p-2 mb-6">
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setViewMode('overview')}
-              className={`px-4 py-2 rounded-md font-bold text-sm ${viewMode === 'overview' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${viewMode === 'overview' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
               概要
             </button>
             <button
               onClick={() => setViewMode('player')}
-              className={`px-4 py-2 rounded-md font-bold text-sm ${viewMode === 'player' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${viewMode === 'player' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
               選手別推移
             </button>
             <button
               onClick={() => setViewMode('sets')}
-              className={`px-4 py-2 rounded-md font-bold text-sm ${viewMode === 'sets' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${viewMode === 'sets' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
               セットスコア
             </button>
             <button
               onClick={() => setViewMode('team')}
-              className={`px-4 py-2 rounded-md font-bold text-sm ${viewMode === 'team' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${viewMode === 'team' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
               チーム推移
             </button>
             <button
               onClick={() => setViewMode('weakness')}
-              className={`px-4 py-2 rounded-md font-bold text-sm ${viewMode === 'weakness' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${viewMode === 'weakness' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
               弱点分析
             </button>
@@ -441,31 +469,31 @@ export default function AnalyticsPage() {
         {/* 概要ビュー */}
         {viewMode === 'overview' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <h3 className="text-lg font-semibold mb-4">総得点</h3>
-              <p className="text-4xl font-bold text-blue-600">{teamOverallStats.totalPoints}</p>
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">総得点</h3>
+              <p className="text-4xl font-bold bg-gradient-to-br from-indigo-600 to-blue-600 bg-clip-text text-transparent">{teamOverallStats.totalPoints}</p>
             </div>
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <h3 className="text-lg font-semibold mb-4">総失点</h3>
-              <p className="text-4xl font-bold text-red-600">{teamOverallStats.totalErrors}</p>
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">総失点</h3>
+              <p className="text-4xl font-bold bg-gradient-to-br from-red-500 to-red-600 bg-clip-text text-transparent">{teamOverallStats.totalErrors}</p>
             </div>
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <h3 className="text-lg font-semibold mb-4">試合数</h3>
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">試合数</h3>
               <p className="text-4xl font-bold text-gray-700">{matches.length}</p>
             </div>
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <h3 className="text-lg font-semibold mb-4">アタック成功率</h3>
-              <p className="text-4xl font-bold text-green-600">{teamOverallStats.attack.successRate.toFixed(1)}%</p>
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">アタック成功率</h3>
+              <p className="text-4xl font-bold bg-gradient-to-br from-green-500 to-emerald-600 bg-clip-text text-transparent">{teamOverallStats.attack.successRate.toFixed(1)}%</p>
               <p className="text-sm text-gray-600 mt-2">{teamOverallStats.attack.point}/{teamOverallStats.attack.total}</p>
             </div>
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <h3 className="text-lg font-semibold mb-4">サーブ成功率</h3>
-              <p className="text-4xl font-bold text-green-600">{teamOverallStats.serve.successRate.toFixed(1)}%</p>
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">サーブ成功率</h3>
+              <p className="text-4xl font-bold bg-gradient-to-br from-green-500 to-emerald-600 bg-clip-text text-transparent">{teamOverallStats.serve.successRate.toFixed(1)}%</p>
               <p className="text-sm text-gray-600 mt-2">{teamOverallStats.serve.point}/{teamOverallStats.serve.total}</p>
             </div>
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <h3 className="text-lg font-semibold mb-4">レセプション成功率</h3>
-              <p className="text-4xl font-bold text-green-600">{teamOverallStats.reception.successRate.toFixed(1)}%</p>
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">レセプション成功率</h3>
+              <p className="text-4xl font-bold bg-gradient-to-br from-green-500 to-emerald-600 bg-clip-text text-transparent">{teamOverallStats.reception.successRate.toFixed(1)}%</p>
               <p className="text-sm text-gray-600 mt-2">A+B: {teamOverallStats.reception.a + teamOverallStats.reception.b}/{teamOverallStats.reception.total}</p>
             </div>
           </div>
@@ -473,13 +501,13 @@ export default function AnalyticsPage() {
 
         {/* 選手別パフォーマンス推移 */}
         {viewMode === 'player' && (
-          <div className="bg-white p-6 rounded-lg shadow-md space-y-6">
+          <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">選手選択</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">選手選択</label>
               <select
                 value={selectedPlayerId}
                 onChange={(e) => setSelectedPlayerId(e.target.value)}
-                className="bg-gray-200 border border-gray-300 text-gray-900 text-sm rounded-lg p-2"
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
                 <option value="all">全選手</option>
                 {players.map(player => (
@@ -522,7 +550,7 @@ export default function AnalyticsPage() {
 
         {/* セットごとのスコア推移 */}
         {viewMode === 'sets' && (
-          <div className="bg-white p-6 rounded-lg shadow-md">
+          <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
             <h3 className="text-xl font-semibold mb-4">セットごとのスコア推移</h3>
             <ResponsiveContainer width="100%" height={400}>
               <BarChart data={setScoreData}>
