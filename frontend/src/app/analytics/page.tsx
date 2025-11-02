@@ -155,9 +155,11 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (!db || !teamInfo?.id) return;
     fetchAllData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSeasonId]);
 
   // 選手別パフォーマンス推移データ
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const playerPerformanceData = useMemo(() => {
     const filteredEvents = selectedPlayerId !== 'all' 
       ? events.filter(e => e.playerId === selectedPlayerId)
@@ -190,6 +192,8 @@ export default function AnalyticsPage() {
         if (event.action === 'RECEPTION' && event.result === '失点') matchStats.receptionMiss++;
       });
 
+      // attackMiss, serveMiss, receptionMiss はグラフで使用されるため保持
+
       result.push({
         match: match.opponent,
         date: match.matchDate.toDate().toLocaleDateString(),
@@ -206,6 +210,7 @@ export default function AnalyticsPage() {
   }, [events, matches, sets, selectedPlayerId]);
 
   // セットごとのスコア推移
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const setScoreData = useMemo(() => {
     const result: Array<{
       matchSet: string;
@@ -228,6 +233,7 @@ export default function AnalyticsPage() {
   }, [matches, sets]);
 
   // チーム全体パフォーマンス推移
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const teamPerformanceData = useMemo(() => {
     const result: Array<{
       match: string;
@@ -242,27 +248,27 @@ export default function AnalyticsPage() {
     matches.forEach(match => {
       const matchEvents = events.filter(e => e.matchId === match.id);
 
-      let attackTotal = 0, attackPoint = 0, attackMiss = 0;
-      let serveTotal = 0, servePoint = 0, serveMiss = 0;
-      let receptionTotal = 0, receptionA = 0, receptionB = 0, receptionMiss = 0;
+      let attackTotal = 0, attackPoint = 0;
+      let serveTotal = 0, servePoint = 0;
+      let receptionTotal = 0, receptionA = 0, receptionB = 0;
       let totalErrors = 0;
 
       matchEvents.forEach(event => {
         if (event.action === 'ATTACK') {
           attackTotal++;
           if (event.result === '得点') attackPoint++;
-          if (event.result === '失点') { attackMiss++; totalErrors++; }
+          if (event.result === '失点') totalErrors++;
         }
         if (event.action === 'SERVE') {
           serveTotal++;
           if (event.result === '得点') servePoint++;
-          if (event.result === '失点') { serveMiss++; totalErrors++; }
+          if (event.result === '失点') totalErrors++;
         }
         if (event.action === 'RECEPTION') {
           receptionTotal++;
           if (event.result === 'Aパス') receptionA++;
           if (event.result === 'Bパス') receptionB++;
-          if (event.result === '失点') { receptionMiss++; totalErrors++; }
+          if (event.result === '失点') totalErrors++;
         }
         if (event.action === 'OUR_ERROR') totalErrors++;
       });
@@ -600,7 +606,7 @@ export default function AnalyticsPage() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    label={({ name, percent }: { name: string; percent: number }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                     outerRadius={100}
                     fill="#8884d8"
                     dataKey="value"

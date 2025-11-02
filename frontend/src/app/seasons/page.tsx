@@ -16,7 +16,7 @@ interface Season {
 }
 
 export default function SeasonsPage() {
-  const { db, user } = useFirebase();
+  const { db } = useFirebase();
   const router = useRouter();
   const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -43,6 +43,7 @@ export default function SeasonsPage() {
   useEffect(() => {
     if (!db || !teamInfo?.id) return;
     fetchSeasons();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, teamInfo]);
 
   const fetchSeasons = async () => {

@@ -56,6 +56,7 @@ export default function NewMatchPage() {
       }
     };
     fetchSeasons();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, teamInfo?.id]);
 
   const handleCreateMatch = async (e: FormEvent) => {
