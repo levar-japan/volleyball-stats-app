@@ -1,7 +1,7 @@
 "use client";
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Auth, User, onAuthStateChanged } from 'firebase/auth';
-import { Firestore, getFirestore, connectFirestoreEmulator, enableIndexedDbPersistence } from 'firebase/firestore';
+import { Firestore, getFirestore, connectFirestoreEmulator, enableIndexedDbPersistence, onSnapshotsInSync } from 'firebase/firestore';
 import { auth, app } from '@/lib/firebase'; // app をインポート
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -10,6 +10,8 @@ interface FirebaseContextType {
   db: Firestore | null; // dbがnullになる可能性を許容
   user: User | null;
   loading: boolean;
+  isOnline: boolean;
+  isFirestoreSynced: boolean;
 }
 const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined);
 
@@ -17,6 +19,8 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [db, setDb] = useState<Firestore | null>(null); // dbをStateで管理
+  const [isOnline, setIsOnline] = useState(true);
+  const [isFirestoreSynced, setIsFirestoreSynced] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -36,6 +40,28 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
+    // ネットワーク接続状態を監視
+    const handleOnline = () => {
+      setIsOnline(true);
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      setIsFirestoreSynced(false);
+    };
+
+    if (typeof window !== 'undefined') {
+      setIsOnline(navigator.onLine);
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+    }
+
+    // Firestoreの同期状態を監視（データベース初期化後）
+    const syncUnsubscribe = onSnapshotsInSync(firestoreDb, () => {
+      if (navigator.onLine) {
+        setIsFirestoreSynced(true);
+      }
+    });
+
     if (process.env.NODE_ENV === 'development') {
       try {
         connectFirestoreEmulator(firestoreDb, '127.0.0.1', 8080);
@@ -51,7 +77,15 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
       setUser(user);
       setLoading(false);
     });
-    return () => unsubscribe();
+    
+    return () => {
+      unsubscribe();
+      syncUnsubscribe();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -79,7 +113,7 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <FirebaseContext.Provider value={{ auth, db, user, loading }}>
+    <FirebaseContext.Provider value={{ auth, db, user, loading, isOnline, isFirestoreSynced }}>
       {children}
     </FirebaseContext.Provider>
   );
