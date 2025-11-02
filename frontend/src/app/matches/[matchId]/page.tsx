@@ -1012,7 +1012,6 @@ export default function MatchPage() {
           </div>
         </div>
       )}
-      </main>
     </div>
   );
 }
