@@ -94,8 +94,8 @@ function makeConverter<T extends object>(): FirestoreDataConverter<T> {
   };
 }
 
-const withId = <T extends object>(snap: QueryDocumentSnapshot<T>) =>
-  ({ id: snap.id, ...snap.data() }) as { id: string } & T;
+  const withId = <T extends object>(snap: QueryDocumentSnapshot<T>): { id: string } & T =>
+    ({ id: snap.id, ...snap.data() }) as { id: string } & T;
 
 const playerConverter = makeConverter<PlayerDoc>();
 const matchConverter  = makeConverter<MatchDoc>();
@@ -205,7 +205,7 @@ export default function MatchPage() {
     }, () => setError("試合情報の取得に失敗しました。"));
     
     const unplayers = onSnapshot(playersRef, (snapshot) => {
-        setPlayers(snapshot.docs.map(d => withId(d)) as Player[]);
+        setPlayers(snapshot.docs.map(d => withId<PlayerDoc>(d) as Player));
         setLoading(false);
     }, (err) => {
         console.error("選手の読み込みに失敗しました: ", err);
@@ -221,7 +221,7 @@ export default function MatchPage() {
     const setsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets`).withConverter(setConverter);
     const qy = query(setsRef, orderBy("setNumber", "asc"));
     const unsets = onSnapshot(qy, (snapshot) => {
-        const newList = snapshot.docs.map(d => withId(d)) as Set[];
+        const newList = snapshot.docs.map(d => withId<SetDoc>(d) as Set);
         const newActiveSet = newList.find(s => s.status === "ongoing") ?? null;
         setSets(newList);
         setActiveSet(newActiveSet);
@@ -249,7 +249,9 @@ export default function MatchPage() {
     if (!db || !teamId || !matchId || !currentSet?.id) { setEvents([]); return; }
     const eventsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}/events`).withConverter(eventConverter);
     const qy = query(eventsRef, orderBy("createdAt", "desc"));
-    const unevents = onSnapshot(qy, (snapshot) => setEvents(snapshot.docs.map(d => withId(d)) as Event[]), () => setError("プレー履歴の取得に失敗しました。"));
+    const unevents = onSnapshot(qy, (snapshot) => {
+        setEvents(snapshot.docs.map(d => withId<EventDoc>(d) as Event));
+    }, () => setError("プレー履歴の取得に失敗しました。"));
     return () => { unevents(); };
   }, [db, teamId, matchId, currentSet?.id]);
 
@@ -297,7 +299,10 @@ export default function MatchPage() {
 
   const handleStartSet = async () => {
     if (!db || !teamId || !matchId) return;
-    if (roster.size < 1) { alert("少なくとも1人の選手をポジションに設定してください。"); return; }
+    if (roster.size < 1) {
+      setError("少なくとも1人の選手をポジションに設定してください。");
+      return;
+    }
     const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`).withConverter(matchConverter);
     const setsRef  = collection(matchRef, "sets").withConverter(setConverter);
     const nextSetNumber = Math.max(0, ...sets.map(s => s.setNumber)) + 1;
@@ -427,7 +432,10 @@ export default function MatchPage() {
   
   const handleUndoEvent = async () => { if (!events.length || !currentSet) return; await handleDeleteSpecificEvent(events[0].id, false); };
   const handleOpenEditModal = (event: Event) => {
-    if (!event.playerId || !ACTION_DEFINITIONS[event.action as ActionKey]) { alert("チームに関するプレーは、ここから編集できません。"); return; }
+    if (!event.playerId || !ACTION_DEFINITIONS[event.action as ActionKey]) {
+      setError("チームに関するプレーは、ここから編集できません。");
+      return;
+    }
     const player = players.find(p => p.id === event.playerId);
     if (!player) { setError("編集対象の選手が見つかりません。"); return; }
     setEditingEvent({ id: event.id, player, action: event.action as ActionKey, result: event.result });
@@ -486,7 +494,10 @@ export default function MatchPage() {
   const openSubModal  = () => { setPlayerInId(""); setPlayerOutId(""); setIsSubModalOpen(true); };
   const closeSubModal = () => setIsSubModalOpen(false);
   const handleSubstitutePlayer = async () => {
-    if (!db || !teamId || !matchId || !playerInId || !playerOutId || !currentSet) { alert("交代する選手を両方選択してください。"); return; }
+    if (!db || !teamId || !matchId || !playerInId || !playerOutId || !currentSet) {
+      setError("交代する選手を両方選択してください。");
+      return;
+    }
     const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`).withConverter(setConverter);
     const playerInObject = players.find(p => p.id === playerInId);
     if (!playerInObject) { setError("交代加入する選手の情報が見つかりません。"); return; }
@@ -515,13 +526,18 @@ export default function MatchPage() {
 
   const handleUpdateRoster = async () => {
     if (!db || !teamId || !matchId || !currentSet) return;
-    if (roster.size < 1) { alert("少なくとも1人の選手をポジションに設定してください。"); return; }
+    if (roster.size < 1) {
+      setError("少なくとも1人の選手をポジションに設定してください。");
+      return;
+    }
     try {
       const setRef = doc(db, `teams/${teamId}/matches/${matchId}/sets/${currentSet.id}`);
       await updateDoc(setRef, { roster: Array.from(roster.values()), updatedAt: serverTimestamp() });
-      alert("ロスターを更新しました。");
       handleCloseRosterModal();
-    } catch (err) { console.error(err); setError("ロスターの更新に失敗しました。"); }
+    } catch (err) {
+      console.error(err);
+      setError("ロスターの更新に失敗しました。");
+    }
   };
 
   const displayedQuickActions = useMemo(() => {

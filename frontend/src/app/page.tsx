@@ -23,7 +23,8 @@ export default function Home() {
   }, [user, loading, router]);
 
   const handleJoinTeam = async () => {
-    if (teamCode.length !== 4) {
+    const trimmedCode = teamCode.trim();
+    if (trimmedCode.length !== 4) {
       setError('4桁のチームコードを入力してください。');
       return;
     }
@@ -32,7 +33,7 @@ export default function Home() {
     try {
       if (!db) throw new Error("Firestore is not initialized");
       
-      const q = query(collection(db, 'teams'), where('code4', '==', teamCode));
+      const q = query(collection(db, 'teams'), where('code4', '==', trimmedCode));
       const querySnapshot = await getDocs(q);
 
       if (querySnapshot.empty) {
@@ -50,6 +51,7 @@ export default function Home() {
       // ユーザーがまだ認証されていなければ匿名認証を行う
       if (!user) {
         await signInAnonymously(auth);
+        // 認証後、onAuthStateChangedでリダイレクトされるためここでは待機
       } else {
         // 既に（別のチームなどで）認証済みなら、そのままダッシュボードへ
         router.push('/dashboard');
@@ -82,7 +84,13 @@ export default function Home() {
               id="team-code" 
               type="text" 
               value={teamCode} 
-              onChange={(e) => setTeamCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} 
+              onChange={(e) => {
+                const value = e.target.value.replace(/[^0-9]/g, '').slice(0, 4);
+                setTeamCode(value);
+                if (error && value.length === 4) {
+                  setError('');
+                }
+              }} 
               maxLength={4} 
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-900 leading-tight focus:outline-none focus:shadow-outline" 
               placeholder="1234" 

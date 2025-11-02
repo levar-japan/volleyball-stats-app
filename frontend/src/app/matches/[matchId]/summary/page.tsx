@@ -46,7 +46,10 @@ export default function SummaryPage() {
     const fetchPlayers = async () => {
       try {
         const playersSnap = await getDocs(collection(db, `teams/${teamId}/players`));
-        setPlayers(playersSnap.docs.map(d => ({ ...d.data(), id: d.id } as Player)));
+        setPlayers(playersSnap.docs.map(d => {
+          const data = d.data();
+          return { id: d.id, displayName: data.displayName } as Player;
+        }));
       } catch (err) { console.error("Failed to fetch players:", err); setError("選手データの取得に失敗しました。"); }
     };
     fetchPlayers();
@@ -73,8 +76,15 @@ export default function SummaryPage() {
 
         results.forEach(result => {
           result.events.forEach(eventData => {
-            if ((eventData as { playerId?: string }).playerId) {
-              fetchedEvents.push({ ...eventData, setId: result.setId } as Event);
+            const event = eventData as { playerId?: string; action?: string; result?: string };
+            if (event.playerId && event.action && event.result) {
+              fetchedEvents.push({
+                id: eventData.id || '',
+                action: event.action,
+                result: event.result,
+                playerId: event.playerId,
+                setId: result.setId
+              } as Event);
             }
           });
         });

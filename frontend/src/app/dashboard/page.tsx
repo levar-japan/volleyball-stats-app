@@ -65,13 +65,95 @@ export default function DashboardPage() {
     }
   }, [db, teamInfo]);
 
-  const handleAddPlayer = async (e: FormEvent) => { e.preventDefault(); if (!db || !newPlayerName.trim() || !teamInfo?.id) return; try { await addDoc(collection(db, `teams/${teamInfo.id}/players`), { displayName: newPlayerName.trim(), active: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), }); setNewPlayerName(''); } catch (err) { console.error(err); setError("選手の追加に失敗しました。"); } };
-  const handleDeletePlayer = async (playerId: string) => { if (!db || !window.confirm("この選手を削除しますか？")) return; if (!teamInfo?.id) return; try { await deleteDoc(doc(db, `teams/${teamInfo.id}/players/${playerId}`)); } catch (err) { console.error(err); setError("選手の削除に失敗しました。"); } };
-  const handleOpenModal = (player: Player) => { setEditingPlayer(player); setIsModalOpen(true); };
-  const handleCloseModal = () => { setIsModalOpen(false); setEditingPlayer(null); };
-  const handleUpdatePlayer = async () => { if (!db || !editingPlayer || !teamInfo?.id) return; try { await updateDoc(doc(db, `teams/${teamInfo.id}/players/${editingPlayer.id}`), { displayName: editingPlayer.displayName, updatedAt: serverTimestamp(), }); handleCloseModal(); } catch (err) { console.error(err); setError("選手の更新に失敗しました。"); } };
-  const handleFinishMatch = async (matchId: string) => { if (!db || !teamInfo?.id || !window.confirm("この試合を終了しますか？")) return; try { const batch = writeBatch(db); const matchRef = doc(db, `teams/${teamInfo.id}/matches/${matchId}`); batch.update(matchRef, { status: 'finished', updatedAt: serverTimestamp() }); const q = query(collection(db, `teams/${teamInfo.id}/matches/${matchId}/sets`), where("status", "==", "ongoing")); const ongoingSetsSnap = await getDocs(q); ongoingSetsSnap.forEach(d => batch.update(d.ref, { status: 'finished', updatedAt: serverTimestamp() })); await batch.commit(); } catch (err) { console.error(err); setError("試合の終了処理に失敗しました。"); } };
-  const handleDeleteMatch = async (matchId: string) => { if (!db || !teamInfo?.id) return; if (!window.confirm("この試合のすべての記録を完全に削除します。よろしいですか？")) return; try { const setsRef = collection(db, `teams/${teamInfo.id}/matches/${matchId}/sets`); const setsSnap = await getDocs(setsRef); const batch = writeBatch(db); for (const setDoc of setsSnap.docs) { const eventsRef = collection(db, `teams/${teamInfo.id}/matches/${matchId}/sets/${setDoc.id}/events`); const eventsSnap = await getDocs(eventsRef); eventsSnap.forEach(eventDoc => batch.delete(eventDoc.ref)); batch.delete(setDoc.ref); } const matchRef = doc(db, `teams/${teamInfo.id}/matches/${matchId}`); batch.delete(matchRef); await batch.commit(); } catch (err) { console.error("試合の削除に失敗しました: ", err); setError("試合の削除中にエラーが発生しました。"); } };
+  const handleAddPlayer = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!db || !newPlayerName.trim() || !teamInfo?.id) return;
+    try {
+      await addDoc(collection(db, `teams/${teamInfo.id}/players`), {
+        displayName: newPlayerName.trim(),
+        active: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setNewPlayerName('');
+    } catch (err) {
+      console.error(err);
+      setError("選手の追加に失敗しました。");
+    }
+  };
+
+  const handleDeletePlayer = async (playerId: string) => {
+    if (!db || !window.confirm("この選手を削除しますか？")) return;
+    if (!teamInfo?.id) return;
+    try {
+      await deleteDoc(doc(db, `teams/${teamInfo.id}/players/${playerId}`));
+    } catch (err) {
+      console.error(err);
+      setError("選手の削除に失敗しました。");
+    }
+  };
+
+  const handleOpenModal = (player: Player) => {
+    setEditingPlayer(player);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingPlayer(null);
+  };
+
+  const handleUpdatePlayer = async () => {
+    if (!db || !editingPlayer || !teamInfo?.id) return;
+    try {
+      await updateDoc(doc(db, `teams/${teamInfo.id}/players/${editingPlayer.id}`), {
+        displayName: editingPlayer.displayName,
+        updatedAt: serverTimestamp(),
+      });
+      handleCloseModal();
+    } catch (err) {
+      console.error(err);
+      setError("選手の更新に失敗しました。");
+    }
+  };
+
+  const handleFinishMatch = async (matchId: string) => {
+    if (!db || !teamInfo?.id || !window.confirm("この試合を終了しますか？")) return;
+    try {
+      const batch = writeBatch(db);
+      const matchRef = doc(db, `teams/${teamInfo.id}/matches/${matchId}`);
+      batch.update(matchRef, { status: 'finished', updatedAt: serverTimestamp() });
+      const q = query(collection(db, `teams/${teamInfo.id}/matches/${matchId}/sets`), where("status", "==", "ongoing"));
+      const ongoingSetsSnap = await getDocs(q);
+      ongoingSetsSnap.forEach(d => batch.update(d.ref, { status: 'finished', updatedAt: serverTimestamp() }));
+      await batch.commit();
+    } catch (err) {
+      console.error(err);
+      setError("試合の終了処理に失敗しました。");
+    }
+  };
+
+  const handleDeleteMatch = async (matchId: string) => {
+    if (!db || !teamInfo?.id) return;
+    if (!window.confirm("この試合のすべての記録を完全に削除します。よろしいですか？")) return;
+    try {
+      const setsRef = collection(db, `teams/${teamInfo.id}/matches/${matchId}/sets`);
+      const setsSnap = await getDocs(setsRef);
+      const batch = writeBatch(db);
+      for (const setDoc of setsSnap.docs) {
+        const eventsRef = collection(db, `teams/${teamInfo.id}/matches/${matchId}/sets/${setDoc.id}/events`);
+        const eventsSnap = await getDocs(eventsRef);
+        eventsSnap.forEach(eventDoc => batch.delete(eventDoc.ref));
+        batch.delete(setDoc.ref);
+      }
+      const matchRef = doc(db, `teams/${teamInfo.id}/matches/${matchId}`);
+      batch.delete(matchRef);
+      await batch.commit();
+    } catch (err) {
+      console.error("試合の削除に失敗しました: ", err);
+      setError("試合の削除中にエラーが発生しました。");
+    }
+  };
   const handleLogout = () => {
     localStorage.removeItem('currentTeam');
     auth.signOut();
@@ -85,7 +167,23 @@ export default function DashboardPage() {
   return (
     <main className="flex min-h-screen flex-col items-center p-8 bg-gray-100">
       <div className="w-full max-w-4xl space-y-8">
-        <header className="flex justify-between items-center bg-white p-4 rounded-lg shadow-md"><div className="flex items-center gap-4"><h1 className="text-2xl font-bold text-gray-900">{teamInfo?.name || 'ダッシュボード'}</h1><Link href="/matches/new"><span className="bg-green-500 text-white font-bold py-2 px-4 rounded-md hover:bg-green-600 transition-colors text-sm">＋ 新しい試合</span></Link></div><div className="flex items-center gap-4"><button onClick={handleLogout} className="px-4 py-2 bg-red-500 text-white font-semibold rounded-md hover:bg-red-600 transition-colors text-sm">ログアウト</button></div></header>
+        <header className="flex justify-between items-center bg-white p-4 rounded-lg shadow-md">
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold text-gray-900">{teamInfo?.name || 'ダッシュボード'}</h1>
+            <Link href="/matches/new">
+              <span className="bg-green-500 text-white font-bold py-2 px-4 rounded-md hover:bg-green-600 transition-colors text-sm">＋ 新しい試合</span>
+            </Link>
+            <Link href="/seasons">
+              <span className="bg-purple-500 text-white font-bold py-2 px-4 rounded-md hover:bg-purple-600 transition-colors text-sm">シーズン管理</span>
+            </Link>
+            <Link href="/analytics">
+              <span className="bg-indigo-500 text-white font-bold py-2 px-4 rounded-md hover:bg-indigo-600 transition-colors text-sm">統計分析</span>
+            </Link>
+          </div>
+          <div className="flex items-center gap-4">
+            <button onClick={handleLogout} className="px-4 py-2 bg-red-500 text-white font-semibold rounded-md hover:bg-red-600 transition-colors text-sm">ログアウト</button>
+          </div>
+        </header>
         <div className="bg-white p-6 rounded-lg shadow-md">
           <h2 className="text-xl font-semibold mb-4 text-gray-800">選手管理</h2>
           <form onSubmit={handleAddPlayer} className="flex flex-col sm:flex-row gap-4 mb-6"><input type="text" value={newPlayerName} onChange={(e) => setNewPlayerName(e.target.value)} placeholder="選手名" className="flex-grow border border-gray-300 p-2 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" required /><button type="submit" className="bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">追加</button></form>
