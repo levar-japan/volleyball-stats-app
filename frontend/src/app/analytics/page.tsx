@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirebase } from '@/app/FirebaseProvider';
 import { useRouter } from 'next/navigation';
 import { collection, getDocs, query, where, orderBy, Timestamp } from 'firebase/firestore';
@@ -83,12 +83,7 @@ export default function AnalyticsPage() {
     }
   }, [router]);
 
-  useEffect(() => {
-    if (!db || !teamInfo?.id) return;
-    fetchAllData();
-  }, [db, teamInfo?.id]);
-
-  const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
     if (!db || !teamInfo?.id) return;
     setLoading(true);
     try {
@@ -150,16 +145,14 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [db, teamInfo?.id, selectedSeasonId]);
 
   useEffect(() => {
     if (!db || !teamInfo?.id) return;
     fetchAllData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSeasonId]);
+  }, [db, teamInfo?.id, fetchAllData]);
 
   // 選手別パフォーマンス推移データ
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const playerPerformanceData = useMemo(() => {
     const filteredEvents = selectedPlayerId !== 'all' 
       ? events.filter(e => e.playerId === selectedPlayerId)
@@ -207,10 +200,9 @@ export default function AnalyticsPage() {
     });
 
     return result;
-  }, [events, matches, sets, selectedPlayerId]);
+  }, [events, matches, selectedPlayerId]);
 
   // セットごとのスコア推移
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const setScoreData = useMemo(() => {
     const result: Array<{
       matchSet: string;
@@ -233,7 +225,6 @@ export default function AnalyticsPage() {
   }, [matches, sets]);
 
   // チーム全体パフォーマンス推移
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const teamPerformanceData = useMemo(() => {
     const result: Array<{
       match: string;
@@ -285,7 +276,7 @@ export default function AnalyticsPage() {
     });
 
     return result;
-  }, [events, matches, sets]);
+  }, [events, matches]);
 
   // 弱点分析
   const weaknessData = useMemo(() => {
@@ -606,7 +597,7 @@ export default function AnalyticsPage() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, percent }: { name: string; percent: number }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    label={(entry: any) => `${entry.name}: ${((entry.percent || 0) * 100).toFixed(0)}%`}
                     outerRadius={100}
                     fill="#8884d8"
                     dataKey="value"
