@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Turbopack設定（Next.js 16対応）
+  turbopack: {},
   webpack: (config, { isServer }) => {
     // isServerがtrueの場合はNode.jsのサーバー環境、falseの場合はブラウザ環境
     // 今回はブラウザ側でのホットリロードが目的なので isServer が false の時だけ設定
