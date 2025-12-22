@@ -4,6 +4,7 @@ import "./globals.css";
 import { FirebaseProvider } from "./FirebaseProvider";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { GlobalProviders } from "@/components/GlobalProviders";
+import { LogViewerButton } from "@/components/LogViewerButton";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -24,6 +25,7 @@ export default function RootLayout({
           <GlobalProviders>
             <OfflineIndicator />
             {children}
+            <LogViewerButton />
           </GlobalProviders>
         </FirebaseProvider>
       </body>
