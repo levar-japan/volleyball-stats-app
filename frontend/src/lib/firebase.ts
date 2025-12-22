@@ -1,5 +1,6 @@
 import { initializeApp, getApp, getApps, FirebaseApp } from "firebase/app";
 import { getAuth, connectAuthEmulator, Auth } from "firebase/auth";
+import { logger } from "./logger";
 
 // getFirestore と関連するインポートを削除
 
@@ -28,9 +29,9 @@ if (typeof window !== 'undefined') {
   );
 
   if (missingVars.length > 0) {
-    console.error('❌ Firebase環境変数が設定されていません:', missingVars);
-    console.error('📝 frontend/.env.local ファイルにFirebase設定を追加してください');
-    console.error('🔗 Firebase Console: https://console.firebase.google.com/');
+    logger.error('❌ Firebase環境変数が設定されていません:', missingVars);
+    logger.error('📝 frontend/.env.local ファイルにFirebase設定を追加してください');
+    logger.error('🔗 Firebase Console: https://console.firebase.google.com/');
   }
 }
 
@@ -48,7 +49,7 @@ if (
   try {
     connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
   } catch (_error) {
-    console.warn("Auth Emulator already connected or failed to connect:", _error);
+    logger.warn("Auth Emulator already connected or failed to connect:", _error);
   }
 }
 

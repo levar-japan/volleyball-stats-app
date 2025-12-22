@@ -4,6 +4,10 @@ import { useFirebase } from '@/app/FirebaseProvider';
 import { useRouter } from 'next/navigation';
 import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, orderBy, serverTimestamp, Timestamp } from 'firebase/firestore';
 import Link from 'next/link';
+import { useGlobalContext } from '@/components/GlobalProviders';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { logger } from '@/lib/logger';
 
 interface TeamInfo { id: string; name: string; }
 interface Season {
@@ -17,6 +21,7 @@ interface Season {
 
 export default function SeasonsPage() {
   const { db } = useFirebase();
+  const { toast, confirm } = useGlobalContext();
   const router = useRouter();
   const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -130,43 +135,51 @@ export default function SeasonsPage() {
       }
       handleCloseModal();
       fetchSeasons();
+      toast.success(editingSeason ? 'シーズンを更新しました' : 'シーズンを作成しました');
     } catch (err) {
-      console.error(err);
-      setError(editingSeason ? "シーズンの更新に失敗しました。" : "シーズンの作成に失敗しました。");
+      const errorMessage = err instanceof Error ? err.message : (editingSeason ? 'シーズンの更新に失敗しました' : 'シーズンの作成に失敗しました');
+      setError(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
   const handleDelete = async (seasonId: string) => {
     if (!db || !teamInfo?.id) return;
-    if (!window.confirm("このシーズンを削除しますか？関連する試合データは削除されませんが、シーズン情報は失われます。")) return;
+    
+    const confirmed = await confirm.confirm({
+      title: 'シーズンの削除',
+      message: 'このシーズンを削除しますか？関連する試合データは削除されませんが、シーズン情報は失われます。',
+      confirmText: '削除',
+      cancelText: 'キャンセル',
+      variant: 'danger',
+    });
+    
+    if (!confirmed) return;
+    
     try {
       await deleteDoc(doc(db, `teams/${teamInfo.id}/seasons/${seasonId}`));
       fetchSeasons();
+      toast.success('シーズンを削除しました');
     } catch (err) {
-      console.error(err);
-      setError("シーズンの削除に失敗しました。");
+      const errorMessage = err instanceof Error ? err.message : 'シーズンの削除に失敗しました';
+      setError(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center animate-pulse">
-            <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <p className="text-gray-600 font-medium">読み込んでいます...</p>
-        </div>
+        <LoadingSpinner size="lg" text="読み込んでいます..." />
       </div>
     );
   }
+  
   if (error && !seasons.length) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 flex items-center justify-center">
-        <div className="bg-white p-6 rounded-xl shadow-lg border border-red-200 max-w-md">
-          <p className="text-red-700 font-medium">{error}</p>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          <ErrorDisplay error={error} onRetry={() => window.location.reload()} />
         </div>
       </div>
     );

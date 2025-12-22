@@ -12,6 +12,7 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
     "@mantine/core": "^8.3.1",
     "@mantine/form": "^8.3.1",
     "@mantine/hooks": "^8.3.1",
@@ -22,7 +23,9 @@
     "next": "^16.1.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "recharts": "^3.3.0"
+    "react-hook-form": "^7.69.0",
+    "recharts": "^3.3.0",
+    "zod": "^4.2.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

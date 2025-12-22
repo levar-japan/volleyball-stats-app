@@ -4,9 +4,13 @@ import { useFirebase } from './FirebaseProvider';
 import { useRouter } from 'next/navigation';
 import { signInAnonymously } from 'firebase/auth';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import { useGlobalContext } from '@/components/GlobalProviders';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
 
 export default function Home() {
   const { auth, db, user, loading } = useFirebase();
+  const { toast } = useGlobalContext();
   const router = useRouter();
   const [teamCode, setTeamCode] = useState('');
   const [error, setError] = useState('');
@@ -58,8 +62,9 @@ export default function Home() {
       }
       
     } catch (err) {
-      console.error(err);
-      setError('参加中にエラーが発生しました。');
+      const errorMessage = err instanceof Error ? err.message : '参加中にエラーが発生しました';
+      setError(errorMessage);
+      toast.error(errorMessage);
       setIsJoining(false);
     }
   };
@@ -68,14 +73,7 @@ export default function Home() {
   if (loading || user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center animate-pulse">
-            <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-          </div>
-          <p className="text-gray-600 font-medium">読み込んでいます...</p>
-        </div>
+        <LoadingSpinner size="lg" text="読み込んでいます..." />
       </div>
     );
   }
@@ -118,16 +116,7 @@ export default function Home() {
               />
             </div>
             
-            {error && (
-              <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-lg">
-                <div className="flex items-start gap-2">
-                  <svg className="w-5 h-5 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-red-700 text-sm font-medium">{error}</p>
-                </div>
-              </div>
-            )}
+            {error && <ErrorDisplay error={error} className="mb-6" />}
             
             <button 
               type="submit"

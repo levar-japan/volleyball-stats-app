@@ -4,6 +4,7 @@ import { Auth, User, onAuthStateChanged } from 'firebase/auth';
 import { Firestore, getFirestore, connectFirestoreEmulator, enableIndexedDbPersistence, onSnapshotsInSync } from 'firebase/firestore';
 import { auth, app } from '@/lib/firebase'; // app をインポート
 import { usePathname, useRouter } from 'next/navigation';
+import { logger } from '@/lib/logger';
 
 interface FirebaseContextType {
   auth: Auth;
@@ -30,13 +31,13 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
 
     enableIndexedDbPersistence(firestoreDb)
       .then(() => {
-        console.log("Firestore offline persistence enabled.");
+        logger.info("Firestore offline persistence enabled.");
       })
       .catch((err) => {
         if (err.code == 'failed-precondition') {
-          console.warn("Firestore offline persistence failed: Multiple tabs open?");
+          logger.warn("Firestore offline persistence failed: Multiple tabs open?");
         } else if (err.code == 'unimplemented') {
-          console.warn("Firestore offline persistence is not supported in this browser.");
+          logger.warn("Firestore offline persistence is not supported in this browser.");
         }
       });
 
@@ -69,9 +70,9 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     ) {
       try {
         connectFirestoreEmulator(firestoreDb, '127.0.0.1', 8080);
-        console.log("Firestore Emulator connected.");
+        logger.info("Firestore Emulator connected.");
       } catch {
-        // console.warn("Firestore Emulator already connected.");
+        // Emulator already connected
       }
     }
     

@@ -2,8 +2,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirebase } from '@/app/FirebaseProvider';
 import { useRouter } from 'next/navigation';
-import { collection, getDocs, query, where, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
 import Link from 'next/link';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
 import {
   LineChart,
   Line,
@@ -99,10 +101,19 @@ export default function AnalyticsPage() {
       const playersSnap = await getDocs(collection(db, `teams/${teamInfo.id}/players`));
       setPlayers(playersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Player)));
 
-      // 試合取得
-      let matchesQuery = query(collection(db, `teams/${teamInfo.id}/matches`), orderBy('matchDate', 'desc'));
+      // 試合取得（最新100件に制限）
+      let matchesQuery = query(
+        collection(db, `teams/${teamInfo.id}/matches`), 
+        orderBy('matchDate', 'desc'),
+        limit(100)
+      );
       if (selectedSeasonId !== 'all') {
-        matchesQuery = query(collection(db, `teams/${teamInfo.id}/matches`), where('seasonId', '==', selectedSeasonId), orderBy('matchDate', 'desc'));
+        matchesQuery = query(
+          collection(db, `teams/${teamInfo.id}/matches`), 
+          where('seasonId', '==', selectedSeasonId), 
+          orderBy('matchDate', 'desc'),
+          limit(100)
+        );
       }
       const matchesSnap = await getDocs(matchesQuery);
       const matchesData = matchesSnap.docs.map(doc => ({
@@ -111,37 +122,58 @@ export default function AnalyticsPage() {
       } as Match));
       setMatches(matchesData);
 
-      // セットとイベント取得
+      // セットとイベント取得（並列処理で最適化）
       const allSets: Set[] = [];
       const allEvents: Event[] = [];
       
-      for (const match of matchesData) {
-        const setsSnap = await getDocs(query(collection(db, `teams/${teamInfo.id}/matches/${match.id}/sets`), orderBy('setNumber', 'asc')));
-        const setsData = setsSnap.docs.map(doc => ({
-          id: doc.id,
-          matchId: match.id,
-          ...doc.data()
-        } as Set));
-        allSets.push(...setsData);
-
-        for (const set of setsData) {
-          const eventsSnap = await getDocs(query(collection(db, `teams/${teamInfo.id}/matches/${match.id}/sets/${set.id}/events`), orderBy('createdAt', 'asc')));
-          const eventsData = eventsSnap.docs.map(doc => ({
-            id: doc.id,
+      // 並列でセットを取得
+      const setsPromises = matchesData.map(match =>
+        getDocs(query(collection(db, `teams/${teamInfo.id}/matches/${match.id}/sets`), orderBy('setNumber', 'asc')))
+          .then(setsSnap => ({
             matchId: match.id,
+            sets: setsSnap.docs.map(doc => ({
+              id: doc.id,
+              matchId: match.id,
+              ...doc.data()
+            } as Set))
+          }))
+      );
+      
+      const setsResults = await Promise.all(setsPromises);
+      setsResults.forEach(result => {
+        allSets.push(...result.sets);
+      });
+
+      // 並列でイベントを取得（各セットごと）
+      const eventsPromises = setsResults.flatMap(result =>
+        result.sets.map(set =>
+          getDocs(query(
+            collection(db, `teams/${teamInfo.id}/matches/${result.matchId}/sets/${set.id}/events`), 
+            orderBy('createdAt', 'asc')
+          )).then(eventsSnap => ({
+            matchId: result.matchId,
             setId: set.id,
-            ...doc.data()
-          } as Event & { matchId: string; setId: string }));
-          allEvents.push(...eventsData);
-        }
-      }
+            events: eventsSnap.docs.map(doc => ({
+              id: doc.id,
+              matchId: result.matchId,
+              setId: set.id,
+              ...doc.data()
+            } as Event & { matchId: string; setId: string }))
+          }))
+        )
+      );
+      
+      const eventsResults = await Promise.all(eventsPromises);
+      eventsResults.forEach(result => {
+        allEvents.push(...result.events);
+      });
       
       setSets(allSets);
       setEvents(allEvents);
       setError(null);
     } catch (err) {
-      console.error(err);
-      setError("データの取得に失敗しました。");
+      const errorMessage = err instanceof Error ? err.message : 'データの取得に失敗しました';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -378,22 +410,16 @@ export default function AnalyticsPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center animate-pulse">
-            <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-          </div>
-          <p className="text-gray-600 font-medium">読み込んでいます...</p>
-        </div>
+        <LoadingSpinner size="lg" text="読み込んでいます..." />
       </div>
     );
   }
+  
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 flex items-center justify-center">
-        <div className="bg-white p-6 rounded-xl shadow-lg border border-red-200 max-w-md">
-          <p className="text-red-700 font-medium">{error}</p>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          <ErrorDisplay error={error} onRetry={() => fetchAllData()} />
         </div>
       </div>
     );

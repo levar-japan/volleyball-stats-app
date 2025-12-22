@@ -2,10 +2,14 @@
 import { useFirebase } from "../FirebaseProvider";
 import { useState, useEffect, FormEvent, useMemo } from "react";
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, doc, addDoc, serverTimestamp, onSnapshot, deleteDoc, updateDoc, writeBatch, orderBy, Timestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, addDoc, serverTimestamp, onSnapshot, deleteDoc, updateDoc, writeBatch, orderBy, limit, Timestamp } from "firebase/firestore";
 import Link from 'next/link';
 import { StatCard } from "@/components/StatCard";
 import { ActionCard } from "@/components/ActionCard";
+import { useGlobalContext } from "@/components/GlobalProviders";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { logger } from "@/lib/logger";
 
 interface Player { id: string; displayName: string; }
 interface Match { 
@@ -21,6 +25,7 @@ interface Season { id: string; name: string; startDate: Timestamp; endDate: Time
 
 export default function DashboardPage() {
   const { user, auth, db, loading: authLoading } = useFirebase();
+  const { toast, confirm } = useGlobalContext();
   const router = useRouter();
   const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -62,13 +67,16 @@ export default function DashboardPage() {
       setPlayers(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Player)));
       setLoadingData(false);
     }, (err) => {
-      console.error(err);
-      setError("選手リストの取得に失敗しました。");
+      logger.error("選手リストの取得に失敗しました:", err);
+      const errorMessage = err instanceof Error ? err.message : '選手リストの取得に失敗しました';
+      setError(errorMessage);
       setLoadingData(false);
     });
 
+    // 試合リストは最新50件のみ取得（パフォーマンス最適化）
     const matchesRef = collection(db, `teams/${teamId}/matches`);
-    const matchesUnsubscribe = onSnapshot(matchesRef, (snapshot) => {
+    const matchesQuery = query(matchesRef, orderBy('matchDate', 'desc'), limit(50));
+    const matchesUnsubscribe = onSnapshot(matchesQuery, (snapshot) => {
       setMatches(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Match)));
     });
 
@@ -100,20 +108,34 @@ export default function DashboardPage() {
         updatedAt: serverTimestamp(),
       });
       setNewPlayerName('');
+      toast.success('選手を追加しました');
     } catch (err) {
-      console.error(err);
-      setError("選手の追加に失敗しました。");
+      const errorMessage = err instanceof Error ? err.message : '選手の追加に失敗しました';
+      setError(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
   const handleDeletePlayer = async (playerId: string) => {
-    if (!db || !window.confirm("この選手を削除しますか？")) return;
-    if (!teamInfo?.id) return;
+    if (!db || !teamInfo?.id) return;
+    
+    const confirmed = await confirm.confirm({
+      title: '選手の削除',
+      message: 'この選手を削除しますか？',
+      confirmText: '削除',
+      cancelText: 'キャンセル',
+      variant: 'danger',
+    });
+    
+    if (!confirmed) return;
+    
     try {
       await deleteDoc(doc(db, `teams/${teamInfo.id}/players/${playerId}`));
+      toast.success('選手を削除しました');
     } catch (err) {
-      console.error(err);
-      setError("選手の削除に失敗しました。");
+      const errorMessage = err instanceof Error ? err.message : '選手の削除に失敗しました';
+      setError(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
@@ -135,14 +157,27 @@ export default function DashboardPage() {
         updatedAt: serverTimestamp(),
       });
       handleCloseModal();
+      toast.success('選手情報を更新しました');
     } catch (err) {
-      console.error(err);
-      setError("選手の更新に失敗しました。");
+      const errorMessage = err instanceof Error ? err.message : '選手の更新に失敗しました';
+      setError(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
   const handleFinishMatch = async (matchId: string) => {
-    if (!db || !teamInfo?.id || !window.confirm("この試合を終了しますか？")) return;
+    if (!db || !teamInfo?.id) return;
+    
+    const confirmed = await confirm.confirm({
+      title: '試合の終了',
+      message: 'この試合を終了しますか？',
+      confirmText: '終了',
+      cancelText: 'キャンセル',
+      variant: 'warning',
+    });
+    
+    if (!confirmed) return;
+    
     try {
       const batch = writeBatch(db);
       const matchRef = doc(db, `teams/${teamInfo.id}/matches/${matchId}`);
@@ -151,15 +186,27 @@ export default function DashboardPage() {
       const ongoingSetsSnap = await getDocs(q);
       ongoingSetsSnap.forEach(d => batch.update(d.ref, { status: 'finished', updatedAt: serverTimestamp() }));
       await batch.commit();
+      toast.success('試合を終了しました');
     } catch (err) {
-      console.error(err);
-      setError("試合の終了処理に失敗しました。");
+      const errorMessage = err instanceof Error ? err.message : '試合の終了処理に失敗しました';
+      setError(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
   const handleDeleteMatch = async (matchId: string) => {
     if (!db || !teamInfo?.id) return;
-    if (!window.confirm("この試合のすべての記録を完全に削除します。よろしいですか？")) return;
+    
+    const confirmed = await confirm.confirm({
+      title: '試合の削除',
+      message: 'この試合のすべての記録を完全に削除します。よろしいですか？',
+      confirmText: '削除',
+      cancelText: 'キャンセル',
+      variant: 'danger',
+    });
+    
+    if (!confirmed) return;
+    
     try {
       const setsRef = collection(db, `teams/${teamInfo.id}/matches/${matchId}/sets`);
       const setsSnap = await getDocs(setsRef);
@@ -173,9 +220,12 @@ export default function DashboardPage() {
       const matchRef = doc(db, `teams/${teamInfo.id}/matches/${matchId}`);
       batch.delete(matchRef);
       await batch.commit();
+      toast.success('試合を削除しました');
     } catch (err) {
-      console.error("試合の削除に失敗しました: ", err);
-      setError("試合の削除中にエラーが発生しました。");
+      const errorMessage = err instanceof Error ? err.message : '試合の削除中にエラーが発生しました';
+      logger.error("試合の削除に失敗しました: ", err);
+      setError(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
@@ -208,9 +258,11 @@ export default function DashboardPage() {
         updatedAt: serverTimestamp(),
       });
       handleCloseMatchModal();
+      toast.success('試合情報を更新しました');
     } catch (err) {
-      console.error(err);
-      setError("試合の更新に失敗しました。");
+      const errorMessage = err instanceof Error ? err.message : '試合の更新に失敗しました';
+      setError(errorMessage);
+      toast.error(errorMessage);
     }
   };
   const handleLogout = () => {
@@ -243,9 +295,31 @@ export default function DashboardPage() {
     };
   }, [matches, players]);
 
-  if (authLoading || !user || !teamInfo) return (<main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100"><p className="text-gray-600">チーム情報を読み込んでいます...</p></main>);
-  if (loadingData) return (<main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100"><p className="text-gray-600">データを読み込んでいます...</p></main>);
-  if (error) return (<main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100"><p className="text-red-500 max-w-md text-center bg-white p-4 rounded-lg shadow-md">エラー: {error}</p></main>);
+  if (authLoading || !user || !teamInfo) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+        <LoadingSpinner size="lg" text="チーム情報を読み込んでいます..." />
+      </main>
+    );
+  }
+  
+  if (loadingData) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+        <LoadingSpinner size="lg" text="データを読み込んでいます..." />
+      </main>
+    );
+  }
+  
+  if (error) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 p-4">
+        <div className="max-w-md w-full">
+          <ErrorDisplay error={error} onRetry={() => window.location.reload()} />
+        </div>
+      </main>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50">

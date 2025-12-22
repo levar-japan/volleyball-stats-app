@@ -3,7 +3,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useFirebase } from '@/app/FirebaseProvider';
-import { collection, doc, getDocs, query, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, doc, getDocs, query, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
 
 // --- 型定義 ---
 type ViewMode = 'vleague' | 'effectiveness' | 'count';
@@ -50,7 +52,10 @@ export default function SummaryPage() {
           const data = d.data();
           return { id: d.id, displayName: data.displayName } as Player;
         }));
-      } catch (err) { console.error("Failed to fetch players:", err); setError("選手データの取得に失敗しました。"); }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : '選手データの取得に失敗しました';
+        setError(errorMessage);
+      }
     };
     fetchPlayers();
     
@@ -65,8 +70,12 @@ export default function SummaryPage() {
         setSets(setsData);
         
         const fetchedEvents: Event[] = [];
+        // 並列処理でイベントを取得（パフォーマンス最適化）
         const eventPromises = setsSnapshot.docs.map(setDoc => 
-          getDocs(collection(setDoc.ref, 'events')).then(eventsSnap => ({
+          getDocs(query(
+            collection(setDoc.ref, 'events'),
+            orderBy('createdAt', 'asc')
+          )).then(eventsSnap => ({
             setId: setDoc.id,
             events: eventsSnap.docs.map(eDoc => ({ id: eDoc.id, ...eDoc.data() }))
           }))
@@ -91,8 +100,12 @@ export default function SummaryPage() {
 
         setAllEvents(fetchedEvents);
         setError(null);
-      } catch (err) { console.error("Failed to process sets/events:", err); setError((err as Error).message); } 
-      finally { setLoading(false); }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'データの処理に失敗しました';
+        setError(errorMessage);
+      } finally {
+        setLoading(false);
+      }
     });
 
     return () => { matchUnsubscribe(); setsUnsubscribe(); };
@@ -179,27 +192,16 @@ export default function SummaryPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center animate-pulse">
-            <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-          </div>
-          <p className="text-gray-600 font-medium">集計データを読み込んでいます...</p>
-        </div>
+        <LoadingSpinner size="lg" text="集計データを読み込んでいます..." />
       </div>
     );
   }
+  
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 flex items-center justify-center">
-        <div className="bg-white p-6 rounded-xl shadow-lg border border-red-200 max-w-md">
-          <div className="flex items-start gap-3">
-            <svg className="w-6 h-6 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-red-700 font-medium">エラー: {error}</p>
-          </div>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          <ErrorDisplay error={error} onRetry={() => window.location.reload()} />
         </div>
       </div>
     );

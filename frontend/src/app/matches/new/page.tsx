@@ -1,24 +1,51 @@
 "use client";
-import { useState, FormEvent, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useFirebase } from '@/app/FirebaseProvider';
 import { useRouter } from 'next/navigation';
 import { collection, addDoc, serverTimestamp, getDocs, query, orderBy } from 'firebase/firestore';
 import Link from 'next/link';
+import { useGlobalContext } from '@/components/GlobalProviders';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { matchSchema } from '@/lib/validation';
+import type { z } from 'zod';
 
 interface TeamInfo { id: string; name: string; }
 
+// フォーム用の型（matchDateは文字列として扱う）
+type MatchFormData = {
+  opponent: string;
+  venue: string | null;
+  matchDate: string; // フォームでは文字列として扱う
+  seasonId: string | null;
+};
+
 export default function NewMatchPage() {
   const { db, user } = useFirebase();
+  const { toast } = useGlobalContext();
   const router = useRouter();
   
   const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
-  const [opponent, setOpponent] = useState('');
-  const [venue, setVenue] = useState('');
-  const [matchDate, setMatchDate] = useState(new Date().toISOString().split('T')[0]);
-  const [seasonId, setSeasonId] = useState<string>('');
   const [seasons, setSeasons] = useState<Array<{ id: string; name: string; startDate: Date; endDate: Date }>>([]);
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    setValue,
+    watch,
+  } = useForm<MatchFormData>({
+    defaultValues: {
+      opponent: '',
+      venue: null,
+      matchDate: new Date().toISOString().split('T')[0],
+      seasonId: null,
+    },
+  });
+
+  const seasonId = watch('seasonId');
 
   useEffect(() => {
     const storedTeam = localStorage.getItem('currentTeam');
@@ -49,42 +76,39 @@ export default function NewMatchPage() {
           const activeSeason = seasonsData.find(s => 
             s.startDate <= new Date() && s.endDate >= new Date()
           ) || seasonsData[0];
-          setSeasonId(activeSeason.id);
+          setValue('seasonId', activeSeason.id);
         }
       } catch (err) {
-        console.error('シーズン取得エラー:', err);
+        // シーズン取得エラーは無視（オプショナルな機能のため）
       }
     };
     fetchSeasons();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, teamInfo?.id]);
 
-  const handleCreateMatch = async (e: FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (data: MatchFormData) => {
     if (!db || !teamInfo?.id || !user) {
-      setError("システムエラーが発生しました。ページを再読み込みしてください。");
+      toast.error('システムエラーが発生しました。ページを再読み込みしてください。');
       return;
     }
-    if (!opponent.trim()) {
-      setError("対戦相手は必須です。");
-      return;
-    }
+    
     setLoading(true);
     try {
       await addDoc(collection(db, `teams/${teamInfo.id}/matches`), {
-        opponent: opponent.trim(), 
-        venue: venue.trim() || null, 
-        matchDate: new Date(matchDate),
-        seasonId: seasonId || null,
-        status: 'scheduled', 
+        opponent: data.opponent,
+        venue: data.venue || null,
+        matchDate: new Date(data.matchDate),
+        seasonId: data.seasonId || null,
+        status: 'scheduled',
         rules: { sets_to_win: 3, points_to_win_normal: 25, points_to_win_final: 15, deuce: true },
-        createdAt: serverTimestamp(), 
+        createdAt: serverTimestamp(),
         createdBy: user.uid,
       });
+      toast.success('試合を作成しました');
       router.push('/dashboard');
     } catch (err) {
-      console.error(err); 
-      setError("試合の作成に失敗しました。"); 
+      const errorMessage = err instanceof Error ? err.message : '試合の作成に失敗しました';
+      toast.error(errorMessage);
       setLoading(false);
     }
   };
@@ -111,20 +135,27 @@ export default function NewMatchPage() {
 
       <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
-          <form onSubmit={handleCreateMatch} className="space-y-6">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6" noValidate>
             <div>
               <label htmlFor="opponent" className="block text-gray-700 text-sm font-semibold mb-2">
-                対戦相手 <span className="text-red-500">*</span>
+                対戦相手 <span className="text-red-500" aria-label="必須">*</span>
               </label>
               <input
                 id="opponent"
                 type="text"
-                value={opponent}
-                onChange={(e) => setOpponent(e.target.value)}
-                className="w-full py-3 px-4 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                {...register('opponent')}
+                className={`w-full py-3 px-4 border rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all ${
+                  errors.opponent ? 'border-red-500' : 'border-gray-300'
+                }`}
                 placeholder="対戦相手名を入力"
-                required
+                aria-invalid={errors.opponent ? 'true' : 'false'}
+                aria-describedby={errors.opponent ? 'opponent-error' : undefined}
               />
+              {errors.opponent && (
+                <p id="opponent-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {errors.opponent.message}
+                </p>
+              )}
             </div>
             
             <div>
@@ -134,24 +165,42 @@ export default function NewMatchPage() {
               <input
                 id="venue"
                 type="text"
-                value={venue}
-                onChange={(e) => setVenue(e.target.value)}
-                className="w-full py-3 px-4 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                {...register('venue')}
+                className={`w-full py-3 px-4 border rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all ${
+                  errors.venue ? 'border-red-500' : 'border-gray-300'
+                }`}
                 placeholder="会場名を入力"
+                aria-invalid={errors.venue ? 'true' : 'false'}
               />
+              {errors.venue && (
+                <p className="mt-1 text-sm text-red-600" role="alert">
+                  {errors.venue.message}
+                </p>
+              )}
             </div>
             
             <div>
               <label htmlFor="matchDate" className="block text-gray-700 text-sm font-semibold mb-2">
-                試合日
+                試合日 <span className="text-red-500" aria-label="必須">*</span>
               </label>
               <input
                 id="matchDate"
                 type="date"
-                value={matchDate}
-                onChange={(e) => setMatchDate(e.target.value)}
-                className="w-full py-3 px-4 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                {...register('matchDate', {
+                  valueAsDate: true,
+                })}
+                defaultValue={new Date().toISOString().split('T')[0]}
+                className={`w-full py-3 px-4 border rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all ${
+                  errors.matchDate ? 'border-red-500' : 'border-gray-300'
+                }`}
+                aria-invalid={errors.matchDate ? 'true' : 'false'}
+                aria-describedby={errors.matchDate ? 'matchDate-error' : undefined}
               />
+              {errors.matchDate && (
+                <p id="matchDate-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {errors.matchDate.message}
+                </p>
+              )}
             </div>
             
             <div>
@@ -160,8 +209,7 @@ export default function NewMatchPage() {
               </label>
               <select
                 id="seasonId"
-                value={seasonId}
-                onChange={(e) => setSeasonId(e.target.value)}
+                {...register('seasonId')}
                 className="w-full py-3 px-4 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
               >
                 <option value="">シーズンを選択しない</option>
@@ -170,17 +218,6 @@ export default function NewMatchPage() {
                 ))}
               </select>
             </div>
-            
-            {error && (
-              <div className="p-4 bg-red-50 border-l-4 border-red-500 rounded-r-lg">
-                <div className="flex items-start gap-2">
-                  <svg className="w-5 h-5 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-red-700 text-sm font-medium">{error}</p>
-                </div>
-              </div>
-            )}
             
             <div className="flex items-center justify-end gap-4 pt-4 border-t border-gray-200">
               <Link href="/dashboard">
