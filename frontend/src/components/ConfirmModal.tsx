@@ -1,5 +1,6 @@
 "use client";
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { useFocusManagement } from '@/hooks/useFocusManagement';
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -22,6 +23,17 @@ export function ConfirmModal({
   onCancel,
   variant = 'info',
 }: ConfirmModalProps) {
+  const modalRef = useRef<HTMLDivElement>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+
+  // フォーカス管理
+  useFocusManagement({
+    containerRef: modalRef,
+    trapFocus: isOpen,
+    initialFocusSelector: 'button[type="button"]:last-child', // 確認ボタンにフォーカス
+    enabled: isOpen,
+  });
+
   useEffect(() => {
     if (isOpen) {
       // ESCキーで閉じる
@@ -76,7 +88,7 @@ export function ConfirmModal({
       />
       
       {/* モーダルコンテンツ */}
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md border border-gray-200 animate-in fade-in zoom-in duration-200">
+      <div ref={modalRef} className="relative bg-white rounded-xl shadow-2xl w-full max-w-md border border-gray-200 animate-in fade-in zoom-in duration-200">
         <div className="p-6">
           {/* アイコンとタイトル */}
           <div className="flex items-start gap-4 mb-4">
@@ -117,6 +129,7 @@ export function ConfirmModal({
               {cancelText}
             </button>
             <button
+              ref={confirmButtonRef}
               type="button"
               onClick={onConfirm}
               className={`px-4 py-2 font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${styles.button} ${

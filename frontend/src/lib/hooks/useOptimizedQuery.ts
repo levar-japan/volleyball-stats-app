@@ -10,6 +10,7 @@ import {
   limit,
   Timestamp
 } from 'firebase/firestore';
+import { logger } from '@/lib/logger';
 
 interface UseOptimizedQueryOptions {
   db: Firestore | null;
@@ -83,7 +84,7 @@ export function useOptimizedQuery(
 
       return query(collectionRef, ...constraints);
     } catch (error) {
-      console.error('クエリ生成エラー:', error);
+      logger.error('クエリ生成エラー:', error);
       return null;
     }
   }, [db, collectionPath, JSON.stringify(filters), orderByField, orderDirection, limitCount]);

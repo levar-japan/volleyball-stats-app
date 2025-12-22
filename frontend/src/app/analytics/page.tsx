@@ -6,6 +6,8 @@ import { collection, getDocs, query, where, orderBy, limit, Timestamp } from 'fi
 import Link from 'next/link';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { useGlobalContext } from '@/components/GlobalProviders';
+import { useRetry } from '@/hooks/useRetry';
 import {
   LineChart,
   Line,
@@ -63,6 +65,7 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 
 export default function AnalyticsPage() {
   const { db } = useFirebase();
+  const { toast } = useGlobalContext();
   const router = useRouter();
   const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -85,99 +88,115 @@ export default function AnalyticsPage() {
     }
   }, [router]);
 
-  const fetchAllData = useCallback(async () => {
+  const fetchAllDataBase = useCallback(async () => {
     if (!db || !teamInfo?.id) return;
-    setLoading(true);
-    try {
-      // シーズン取得
-      const seasonsSnap = await getDocs(query(collection(db, `teams/${teamInfo.id}/seasons`), orderBy('startDate', 'desc')));
-      const seasonsData = seasonsSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Season));
-      setSeasons(seasonsData);
+    // シーズン取得
+    const seasonsSnap = await getDocs(query(collection(db, `teams/${teamInfo.id}/seasons`), orderBy('startDate', 'desc')));
+    const seasonsData = seasonsSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Season));
+    setSeasons(seasonsData);
 
-      // 選手取得
-      const playersSnap = await getDocs(collection(db, `teams/${teamInfo.id}/players`));
-      setPlayers(playersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Player)));
+    // 選手取得
+    const playersSnap = await getDocs(collection(db, `teams/${teamInfo.id}/players`));
+    setPlayers(playersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Player)));
 
-      // 試合取得（最新100件に制限）
-      let matchesQuery = query(
+    // 試合取得（最新100件に制限）
+    let matchesQuery = query(
+      collection(db, `teams/${teamInfo.id}/matches`), 
+      orderBy('matchDate', 'desc'),
+      limit(100)
+    );
+    if (selectedSeasonId !== 'all') {
+      matchesQuery = query(
         collection(db, `teams/${teamInfo.id}/matches`), 
+        where('seasonId', '==', selectedSeasonId), 
         orderBy('matchDate', 'desc'),
         limit(100)
       );
-      if (selectedSeasonId !== 'all') {
-        matchesQuery = query(
-          collection(db, `teams/${teamInfo.id}/matches`), 
-          where('seasonId', '==', selectedSeasonId), 
-          orderBy('matchDate', 'desc'),
-          limit(100)
-        );
-      }
-      const matchesSnap = await getDocs(matchesQuery);
-      const matchesData = matchesSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Match));
-      setMatches(matchesData);
+    }
+    const matchesSnap = await getDocs(matchesQuery);
+    const matchesData = matchesSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Match));
+    setMatches(matchesData);
 
-      // セットとイベント取得（並列処理で最適化）
-      const allSets: Set[] = [];
-      const allEvents: Event[] = [];
-      
-      // 並列でセットを取得
-      const setsPromises = matchesData.map(match =>
-        getDocs(query(collection(db, `teams/${teamInfo.id}/matches/${match.id}/sets`), orderBy('setNumber', 'asc')))
-          .then(setsSnap => ({
+    // セットとイベント取得（並列処理で最適化）
+    const allSets: Set[] = [];
+    const allEvents: Event[] = [];
+    
+    // 並列でセットを取得
+    const setsPromises = matchesData.map(match =>
+      getDocs(query(collection(db, `teams/${teamInfo.id}/matches/${match.id}/sets`), orderBy('setNumber', 'asc')))
+        .then(setsSnap => ({
+          matchId: match.id,
+          sets: setsSnap.docs.map(doc => ({
+            id: doc.id,
             matchId: match.id,
-            sets: setsSnap.docs.map(doc => ({
-              id: doc.id,
-              matchId: match.id,
-              ...doc.data()
-            } as Set))
-          }))
-      );
-      
-      const setsResults = await Promise.all(setsPromises);
-      setsResults.forEach(result => {
-        allSets.push(...result.sets);
-      });
+            ...doc.data()
+          } as Set))
+        }))
+    );
+    
+    const setsResults = await Promise.all(setsPromises);
+    setsResults.forEach(result => {
+      allSets.push(...result.sets);
+    });
 
-      // 並列でイベントを取得（各セットごと）
-      const eventsPromises = setsResults.flatMap(result =>
-        result.sets.map(set =>
-          getDocs(query(
-            collection(db, `teams/${teamInfo.id}/matches/${result.matchId}/sets/${set.id}/events`), 
-            orderBy('createdAt', 'asc')
-          )).then(eventsSnap => ({
+    // 並列でイベントを取得（各セットごと）
+    const eventsPromises = setsResults.flatMap(result =>
+      result.sets.map(set =>
+        getDocs(query(
+          collection(db, `teams/${teamInfo.id}/matches/${result.matchId}/sets/${set.id}/events`), 
+          orderBy('createdAt', 'asc')
+        )).then(eventsSnap => ({
+          matchId: result.matchId,
+          setId: set.id,
+          events: eventsSnap.docs.map(doc => ({
+            id: doc.id,
             matchId: result.matchId,
             setId: set.id,
-            events: eventsSnap.docs.map(doc => ({
-              id: doc.id,
-              matchId: result.matchId,
-              setId: set.id,
-              ...doc.data()
-            } as Event & { matchId: string; setId: string }))
-          }))
-        )
-      );
-      
-      const eventsResults = await Promise.all(eventsPromises);
-      eventsResults.forEach(result => {
-        allEvents.push(...result.events);
-      });
-      
-      setSets(allSets);
-      setEvents(allEvents);
-      setError(null);
+            ...doc.data()
+          } as Event & { matchId: string; setId: string }))
+        }))
+      )
+    );
+    
+    const eventsResults = await Promise.all(eventsPromises);
+    eventsResults.forEach(result => {
+      allEvents.push(...result.events);
+    });
+    
+    setSets(allSets);
+    setEvents(allEvents);
+    setError(null);
+  }, [db, teamInfo?.id, selectedSeasonId]);
+
+  // リトライ機能付きのデータ取得
+  const { executeWithRetry } = useRetry(fetchAllDataBase, {
+    maxRetries: 3,
+    retryDelay: 1000,
+    onRetry: (attempt: number) => {
+      toast.info(`データ取得を再試行中... (${attempt}/${3})`);
+    },
+    onMaxRetriesReached: () => {
+      toast.error('データの取得に失敗しました。しばらく待ってから再試行してください。');
+    },
+  });
+
+  const fetchAllData = useCallback(async () => {
+    setLoading(true);
+    try {
+      await executeWithRetry();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'データの取得に失敗しました';
       setError(errorMessage);
     } finally {
       setLoading(false);
     }
-  }, [db, teamInfo?.id, selectedSeasonId]);
+  }, [executeWithRetry]);
 
   useEffect(() => {
     if (!db || !teamInfo?.id) return;

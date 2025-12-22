@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo, useRef, FormEvent } from "react";
+import { useState, useEffect, useMemo, useRef, FormEvent, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useFirebase } from "@/app/FirebaseProvider";
@@ -7,6 +7,8 @@ import { useGlobalContext } from "@/components/GlobalProviders";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { ErrorDisplay } from "@/components/ErrorDisplay";
 import { logger } from "@/lib/logger";
+import { withId } from "@/lib/utils/typeHelpers";
+import { useRetry } from "@/hooks/useRetry";
 import {
   doc,
   collection,
@@ -99,8 +101,6 @@ function makeConverter<T extends object>(): FirestoreDataConverter<T> {
   };
 }
 
-  const withId = <T extends object>(snap: QueryDocumentSnapshot<T>): { id: string } & T =>
-    ({ id: snap.id, ...snap.data() }) as { id: string } & T;
 
 const playerConverter = makeConverter<PlayerDoc>();
 const matchConverter  = makeConverter<MatchDoc>();
@@ -206,12 +206,20 @@ export default function MatchPage() {
     const playersRef = collection(db, `teams/${teamId}/players`).withConverter(playerConverter);
 
     const unmatch = onSnapshot(matchRef, (docSnap) => {
-      if (docSnap.exists()) setMatch({ id: docSnap.id, ...docSnap.data() } as Match);
-      else setError("試合が見つかりません。");
-    }, () => setError("試合情報の取得に失敗しました。"));
+      if (docSnap.exists()) {
+        const matchData = docSnap.data();
+        setMatch({ id: docSnap.id, ...matchData } as Match);
+      } else {
+        setError("試合が見つかりません。");
+      }
+    }, (err) => {
+      const errorMessage = err instanceof Error ? err.message : '試合情報の取得に失敗しました';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    });
     
     const unplayers = onSnapshot(playersRef, (snapshot) => {
-        setPlayers(snapshot.docs.map(d => withId<PlayerDoc>(d) as Player));
+        setPlayers(snapshot.docs.map(d => withId<PlayerDoc>(d)));
         setLoading(false);
     }, (err) => {
         const errorMessage = err instanceof Error ? err.message : '選手の読み込みに失敗しました';
@@ -221,14 +229,14 @@ export default function MatchPage() {
     });
 
     return () => { unmatch(); unplayers(); };
-  }, [db, teamId, matchId]);
+  }, [db, teamId, matchId, toast]);
 
   useEffect(() => {
     if (!db || !teamId || !matchId) return;
     const setsRef = collection(db, `teams/${teamId}/matches/${matchId}/sets`).withConverter(setConverter);
     const qy = query(setsRef, orderBy("setNumber", "asc"));
     const unsets = onSnapshot(qy, (snapshot) => {
-        const newList = snapshot.docs.map(d => withId<SetDoc>(d) as Set);
+        const newList = snapshot.docs.map(d => withId<SetDoc>(d));
         const newActiveSet = newList.find(s => s.status === "ongoing") ?? null;
         setSets(newList);
         setActiveSet(newActiveSet);
@@ -259,19 +267,23 @@ export default function MatchPage() {
     // 最新200件に制限（パフォーマンス最適化）
     const qy = query(eventsRef, orderBy("createdAt", "desc"), limit(200));
     const unevents = onSnapshot(qy, (snapshot) => {
-        setEvents(snapshot.docs.map(d => withId<EventDoc>(d) as Event));
-    }, () => setError("プレー履歴の取得に失敗しました。"));
+        setEvents(snapshot.docs.map(d => withId<EventDoc>(d) as unknown as Event));
+    }, (err) => {
+      const errorMessage = err instanceof Error ? err.message : 'プレー履歴の取得に失敗しました';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    });
     return () => { unevents(); };
-  }, [db, teamId, matchId, currentSet?.id]);
+  }, [db, teamId, matchId, currentSet?.id, toast]);
 
-  const calculateScoreChange = (action: string, result: string) => {
+  const calculateScoreChange = useCallback((action: string, result: string) => {
     let scoreChangeOur = 0, scoreChangeOpponent = 0;
     if (action === TEAM_ACTIONS.OPPONENT_ERROR) scoreChangeOur = 1;
     else if (action === TEAM_ACTIONS.OUR_ERROR) scoreChangeOpponent = 1;
     else if (result === "得点") scoreChangeOur = 1;
     else if (result === "失点" || result === "失敗") scoreChangeOpponent = 1;
     return { scoreChangeOur, scoreChangeOpponent };
-  };
+  }, []);
 
   const handleOpenRosterModal = (setForRoster?: Set) => {
     const targetSet = setForRoster || currentSet;
