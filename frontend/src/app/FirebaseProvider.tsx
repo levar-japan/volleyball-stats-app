@@ -62,7 +62,11 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    if (process.env.NODE_ENV === 'development') {
+    // エミュレーター接続は、USE_FIREBASE_EMULATOR環境変数が設定されている場合のみ
+    if (
+      process.env.NODE_ENV === 'development' &&
+      process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === 'true'
+    ) {
       try {
         connectFirestoreEmulator(firestoreDb, '127.0.0.1', 8080);
         console.log("Firestore Emulator connected.");

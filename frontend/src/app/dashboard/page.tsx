@@ -2,14 +2,22 @@
 import { useFirebase } from "../FirebaseProvider";
 import { useState, useEffect, FormEvent, useMemo } from "react";
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, doc, addDoc, serverTimestamp, onSnapshot, deleteDoc, updateDoc, writeBatch } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, addDoc, serverTimestamp, onSnapshot, deleteDoc, updateDoc, writeBatch, orderBy, Timestamp } from "firebase/firestore";
 import Link from 'next/link';
 import { StatCard } from "@/components/StatCard";
 import { ActionCard } from "@/components/ActionCard";
 
 interface Player { id: string; displayName: string; }
-interface Match { id: string; opponent: string; matchDate: { seconds: number, nanoseconds: number }; status: string; }
+interface Match { 
+  id: string; 
+  opponent: string; 
+  matchDate: Timestamp | { seconds: number, nanoseconds: number }; 
+  status: string;
+  venue?: string | null;
+  seasonId?: string | null;
+}
 interface TeamInfo { id: string; name: string; }
+interface Season { id: string; name: string; startDate: Timestamp; endDate: Timestamp; }
 
 export default function DashboardPage() {
   const { user, auth, db, loading: authLoading } = useFirebase();
@@ -22,6 +30,9 @@ export default function DashboardPage() {
   const [newPlayerName, setNewPlayerName] = useState('');
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingMatch, setEditingMatch] = useState<Match | null>(null);
+  const [isMatchModalOpen, setIsMatchModalOpen] = useState(false);
+  const [seasons, setSeasons] = useState<Season[]>([]);
 
   useEffect(() => {
     const storedTeam = localStorage.getItem('currentTeam');
@@ -61,9 +72,20 @@ export default function DashboardPage() {
       setMatches(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Match)));
     });
 
+    // シーズン情報を取得
+    const seasonsRef = collection(db, `teams/${teamId}/seasons`);
+    const seasonsQuery = query(seasonsRef, orderBy('startDate', 'desc'));
+    const seasonsUnsubscribe = onSnapshot(seasonsQuery, (snapshot) => {
+      setSeasons(snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Season)));
+    });
+
     return () => {
       playersUnsubscribe();
       matchesUnsubscribe();
+      seasonsUnsubscribe();
     }
   }, [db, teamInfo]);
 
@@ -154,6 +176,41 @@ export default function DashboardPage() {
     } catch (err) {
       console.error("試合の削除に失敗しました: ", err);
       setError("試合の削除中にエラーが発生しました。");
+    }
+  };
+
+  const handleOpenMatchModal = (match: Match) => {
+    setEditingMatch(match);
+    setIsMatchModalOpen(true);
+  };
+
+  const handleCloseMatchModal = () => {
+    setIsMatchModalOpen(false);
+    setEditingMatch(null);
+  };
+
+  const handleUpdateMatch = async () => {
+    if (!db || !editingMatch || !teamInfo?.id) return;
+    if (!editingMatch.opponent.trim()) {
+      setError("対戦相手は必須です。");
+      return;
+    }
+    try {
+      const matchDate = editingMatch.matchDate instanceof Timestamp 
+        ? editingMatch.matchDate.toDate() 
+        : new Date(editingMatch.matchDate.seconds * 1000);
+      
+      await updateDoc(doc(db, `teams/${teamInfo.id}/matches/${editingMatch.id}`), {
+        opponent: editingMatch.opponent.trim(),
+        venue: editingMatch.venue?.trim() || null,
+        matchDate: matchDate,
+        seasonId: editingMatch.seasonId || null,
+        updatedAt: serverTimestamp(),
+      });
+      handleCloseMatchModal();
+    } catch (err) {
+      console.error(err);
+      setError("試合の更新に失敗しました。");
     }
   };
   const handleLogout = () => {
@@ -437,9 +494,15 @@ export default function DashboardPage() {
                             ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
                             : 'bg-indigo-600 text-white hover:bg-indigo-700'
                         }`}>
-                          {m.status === 'finished' ? '編集' : '記録'}
+                          {m.status === 'finished' ? '記録を見る' : '記録'}
                         </span>
                       </Link>
+                      <button
+                        onClick={() => handleOpenMatchModal(m)}
+                        className="px-4 py-2 bg-blue-100 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-200 transition-colors"
+                      >
+                        編集
+                      </button>
                       {m.status !== 'finished' && (
                         <button
                           onClick={() => handleFinishMatch(m.id)}
@@ -463,7 +526,7 @@ export default function DashboardPage() {
         </div>
       </main>
 
-      {/* 編集モーダル */}
+      {/* 選手編集モーダル */}
       {isModalOpen && editingPlayer && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
@@ -486,6 +549,106 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={handleCloseModal}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  キャンセル
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                >
+                  更新
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 試合編集モーダル */}
+      {isMatchModalOpen && editingMatch && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-2xl font-bold mb-6 text-gray-900">試合情報を編集</h2>
+            <form onSubmit={(e) => { e.preventDefault(); handleUpdateMatch(); }}>
+              <div className="mb-6">
+                <label htmlFor="edit-match-opponent" className="block text-sm font-medium text-gray-700 mb-2">
+                  対戦相手 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="edit-match-opponent"
+                  type="text"
+                  value={editingMatch.opponent}
+                  onChange={(e) => setEditingMatch({ ...editingMatch, opponent: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  required
+                />
+              </div>
+              <div className="mb-6">
+                <label htmlFor="edit-match-venue" className="block text-sm font-medium text-gray-700 mb-2">
+                  会場 <span className="text-gray-500 text-xs">(任意)</span>
+                </label>
+                <input
+                  id="edit-match-venue"
+                  type="text"
+                  value={editingMatch.venue || ''}
+                  onChange={(e) => setEditingMatch({ ...editingMatch, venue: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  placeholder="会場名を入力"
+                />
+              </div>
+              <div className="mb-6">
+                <label htmlFor="edit-match-date" className="block text-sm font-medium text-gray-700 mb-2">
+                  試合日
+                </label>
+                <input
+                  id="edit-match-date"
+                  type="date"
+                  value={
+                    editingMatch.matchDate instanceof Timestamp
+                      ? editingMatch.matchDate.toDate().toISOString().split('T')[0]
+                      : new Date(editingMatch.matchDate.seconds * 1000).toISOString().split('T')[0]
+                  }
+                  onChange={(e) => {
+                    const newDate = new Date(e.target.value);
+                    setEditingMatch({ 
+                      ...editingMatch, 
+                      matchDate: Timestamp.fromDate(newDate) 
+                    });
+                  }}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
+              <div className="mb-6">
+                <label htmlFor="edit-match-season" className="block text-sm font-medium text-gray-700 mb-2">
+                  シーズン <span className="text-gray-500 text-xs">(任意)</span>
+                </label>
+                <select
+                  id="edit-match-season"
+                  value={editingMatch.seasonId || ''}
+                  onChange={(e) => setEditingMatch({ ...editingMatch, seasonId: e.target.value || null })}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                >
+                  <option value="">シーズンを選択しない</option>
+                  {seasons.map(season => (
+                    <option key={season.id} value={season.id}>{season.name}</option>
+                  ))}
+                </select>
+              </div>
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-lg">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-5 h-5 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-red-700 text-sm font-medium">{error}</p>
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleCloseMatchModal}
                   className="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
                 >
                   キャンセル

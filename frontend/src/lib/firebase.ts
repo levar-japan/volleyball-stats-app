@@ -12,15 +12,41 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
+// 環境変数のバリデーション
+if (typeof window !== 'undefined') {
+  const requiredEnvVars = [
+    'NEXT_PUBLIC_FIREBASE_API_KEY',
+    'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
+    'NEXT_PUBLIC_FIREBASE_PROJECT_ID',
+    'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET',
+    'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID',
+    'NEXT_PUBLIC_FIREBASE_APP_ID',
+  ];
+
+  const missingVars = requiredEnvVars.filter(
+    (varName) => !process.env[varName] || process.env[varName]?.includes('your-')
+  );
+
+  if (missingVars.length > 0) {
+    console.error('❌ Firebase環境変数が設定されていません:', missingVars);
+    console.error('📝 frontend/.env.local ファイルにFirebase設定を追加してください');
+    console.error('🔗 Firebase Console: https://console.firebase.google.com/');
+  }
+}
+
 const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth: Auth = getAuth(app);
 
 // db の初期化とオフライン設定をここから削除
 
-if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+// エミュレーター接続は、USE_FIREBASE_EMULATOR環境変数が設定されている場合のみ
+if (
+  typeof window !== 'undefined' && 
+  process.env.NODE_ENV === 'development' &&
+  process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === 'true'
+) {
   try {
     connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
-    // connectFirestoreEmulator をここから削除
   } catch (_error) {
     console.warn("Auth Emulator already connected or failed to connect:", _error);
   }
