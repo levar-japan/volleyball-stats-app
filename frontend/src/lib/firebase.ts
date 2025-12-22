@@ -29,9 +29,24 @@ if (typeof window !== 'undefined') {
   );
 
   if (missingVars.length > 0) {
-    logger.error('❌ Firebase環境変数が設定されていません:', missingVars);
-    logger.error('📝 frontend/.env.local ファイルにFirebase設定を追加してください');
-    logger.error('🔗 Firebase Console: https://console.firebase.google.com/');
+    const isProduction = process.env.NODE_ENV === 'production' || 
+                         typeof window !== 'undefined' && window.location.hostname !== 'localhost';
+    
+    if (isProduction) {
+      logger.error('❌ Firebase環境変数が設定されていません:', missingVars);
+      logger.error('📝 Vercelダッシュボードで環境変数を設定してください:');
+      logger.error('   1. Vercel → プロジェクト → Settings → Environment Variables');
+      logger.error('   2. 以下の環境変数を追加:');
+      missingVars.forEach(varName => {
+        logger.error(`      - ${varName}`);
+      });
+      logger.error('   3. 再デプロイを実行');
+      logger.error('🔗 Vercel: https://vercel.com/dashboard');
+    } else {
+      logger.error('❌ Firebase環境変数が設定されていません:', missingVars);
+      logger.error('📝 frontend/.env.local ファイルにFirebase設定を追加してください');
+      logger.error('🔗 Firebase Console: https://console.firebase.google.com/');
+    }
   }
 }
 
