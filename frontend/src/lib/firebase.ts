@@ -29,8 +29,14 @@ if (typeof window !== 'undefined') {
   );
 
   if (missingVars.length > 0) {
+    // 本番環境の判定: NODE_ENVがproduction、またはlocalhost以外のホスト名
     const isProduction = process.env.NODE_ENV === 'production' || 
-                         typeof window !== 'undefined' && window.location.hostname !== 'localhost';
+                         (typeof window !== 'undefined' && 
+                          window.location.hostname !== 'localhost' && 
+                          window.location.hostname !== '127.0.0.1' &&
+                          !window.location.hostname.startsWith('192.168.') &&
+                          !window.location.hostname.startsWith('10.') &&
+                          !window.location.hostname.endsWith('.local'));
     
     if (isProduction) {
       logger.error('❌ Firebase環境変数が設定されていません:', missingVars);
