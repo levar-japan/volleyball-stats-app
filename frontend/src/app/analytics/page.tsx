@@ -25,7 +25,7 @@ import {
 } from 'recharts';
 
 interface TeamInfo { id: string; name: string; }
-interface Player { id: string; displayName: string; }
+interface Player { id: string; displayName: string; gender?: 'male' | 'female' | 'other' | ''; }
 interface Match {
   id: string;
   opponent: string;

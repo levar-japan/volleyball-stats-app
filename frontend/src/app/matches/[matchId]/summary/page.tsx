@@ -9,7 +9,7 @@ import { ErrorDisplay } from '@/components/ErrorDisplay';
 
 // --- 型定義 ---
 type ViewMode = 'vleague' | 'effectiveness' | 'count';
-interface Player { id: string; displayName: string; }
+interface Player { id: string; displayName: string; gender?: 'male' | 'female' | 'other' | ''; }
 interface Event { id: string; action: string; result: string; playerId: string; setId: string; }
 interface Match { opponent: string; }
 interface Set { id: string; setNumber: number; }

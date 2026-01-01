@@ -11,7 +11,7 @@ import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { ErrorDisplay } from "@/components/ErrorDisplay";
 import { logger } from "@/lib/logger";
 
-interface Player { id: string; displayName: string; }
+interface Player { id: string; displayName: string; gender?: 'male' | 'female' | 'other' | ''; }
 interface Match { 
   id: string; 
   opponent: string; 
@@ -33,6 +33,7 @@ export default function DashboardPage() {
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newPlayerName, setNewPlayerName] = useState('');
+  const [newPlayerGender, setNewPlayerGender] = useState<'male' | 'female' | 'other' | ''>('');
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
@@ -103,11 +104,13 @@ export default function DashboardPage() {
     try {
       await addDoc(collection(db, `teams/${teamInfo.id}/players`), {
         displayName: newPlayerName.trim(),
+        gender: newPlayerGender || undefined,
         active: true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
       setNewPlayerName('');
+      setNewPlayerGender('');
       toast.success('選手を追加しました');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '選手の追加に失敗しました';
@@ -154,6 +157,7 @@ export default function DashboardPage() {
     try {
       await updateDoc(doc(db, `teams/${teamInfo.id}/players/${editingPlayer.id}`), {
         displayName: editingPlayer.displayName,
+        gender: editingPlayer.gender || undefined,
         updatedAt: serverTimestamp(),
       });
       handleCloseModal();
@@ -453,6 +457,16 @@ export default function DashboardPage() {
                     className="flex-grow border border-gray-300 rounded-lg px-4 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                     required
                   />
+                  <select
+                    value={newPlayerGender}
+                    onChange={(e) => setNewPlayerGender(e.target.value as 'male' | 'female' | 'other' | '')}
+                    className="border border-gray-300 rounded-lg px-4 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                  >
+                    <option value="">性別を選択</option>
+                    <option value="male">男性</option>
+                    <option value="female">女性</option>
+                    <option value="other">その他</option>
+                  </select>
                   <button
                     type="submit"
                     className="bg-indigo-600 text-white font-semibold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm hover:shadow-md"
@@ -620,6 +634,22 @@ export default function DashboardPage() {
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   required
                 />
+              </div>
+              <div className="mb-6">
+                <label htmlFor="edit-player-gender" className="block text-sm font-medium text-gray-700 mb-2">
+                  性別
+                </label>
+                <select
+                  id="edit-player-gender"
+                  value={editingPlayer.gender || ''}
+                  onChange={(e) => setEditingPlayer({ ...editingPlayer, gender: e.target.value as 'male' | 'female' | 'other' | '' })}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                >
+                  <option value="">選択しない</option>
+                  <option value="male">男性</option>
+                  <option value="female">女性</option>
+                  <option value="other">その他</option>
+                </select>
               </div>
               <div className="flex justify-end gap-3">
                 <button

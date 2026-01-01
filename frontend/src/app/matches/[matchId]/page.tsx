@@ -36,7 +36,7 @@ type ActionStatus = "scheduled" | "ongoing" | "finished";
 type SetStatus = "pending" | "ongoing" | "finished";
 type ServerTS = ReturnType<typeof serverTimestamp>;
 
-interface PlayerDoc { displayName: string; }
+interface PlayerDoc { displayName: string; gender?: 'male' | 'female' | 'other' | ''; }
 interface MatchDoc  { opponent: string; status: ActionStatus; }
 interface RosterPlayer { playerId: string; displayName: string; position: string; }
 interface TeamInfo { id: string; name: string; }
@@ -187,6 +187,8 @@ export default function MatchPage() {
   const [playerInId, setPlayerInId] = useState("");
   const [isProcessingEvent, setIsProcessingEvent] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState('');
+  const [newPlayerGender, setNewPlayerGender] = useState<'male' | 'female' | 'other' | ''>('');
+  const [rosterGenderFilter, setRosterGenderFilter] = useState<'all' | 'male' | 'female' | 'other' | ''>('all');
   
   type LongPressMode = 'success' | null;
   const [longPressMode, setLongPressMode] = useState<LongPressMode>(null);
@@ -634,10 +636,13 @@ export default function MatchPage() {
     if (!db || !teamId || !newPlayerName.trim()) return;
     try {
       await addDoc(collection(db, `teams/${teamId}/players`), {
-        displayName: newPlayerName.trim(), active: true,
+        displayName: newPlayerName.trim(),
+        gender: newPlayerGender || undefined,
+        active: true,
         createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
       });
       setNewPlayerName('');
+      setNewPlayerGender('');
       toast.success('選手を追加しました');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '試合中の選手追加に失敗しました';
@@ -1034,13 +1039,42 @@ export default function MatchPage() {
             {!isPreparingNextSet && <p className="mb-4 text-sm text-gray-600">選手の追加、ポジション変更、控えへの移動が可能です。</p>}
             <div className="my-4 p-4 border rounded-md bg-gray-50">
               <h3 className="text-lg font-semibold mb-2 text-gray-800">新しい選手をチームに追加</h3>
-              <form onSubmit={handleAddPlayerInMatch} className="flex gap-2">
+              <form onSubmit={handleAddPlayerInMatch} className="flex flex-col sm:flex-row gap-2">
                 <input type="text" value={newPlayerName} onChange={(e) => setNewPlayerName(e.target.value)} placeholder="選手名" className="flex-grow border border-gray-300 p-2 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                <select
+                  value={newPlayerGender}
+                  onChange={(e) => setNewPlayerGender(e.target.value as 'male' | 'female' | 'other' | '')}
+                  className="border border-gray-300 p-2 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">性別を選択</option>
+                  <option value="male">男性</option>
+                  <option value="female">女性</option>
+                  <option value="other">その他</option>
+                </select>
                 <button type="submit" className="bg-green-500 text-white font-bold py-2 px-4 rounded-md hover:bg-green-600 transition-colors">追加</button>
               </form>
             </div>
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">性別でフィルター</label>
+              <select
+                value={rosterGenderFilter}
+                onChange={(e) => setRosterGenderFilter(e.target.value as 'all' | 'male' | 'female' | 'other' | '')}
+                className="w-full sm:w-auto border border-gray-300 p-2 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">すべて</option>
+                <option value="male">男性</option>
+                <option value="female">女性</option>
+                <option value="other">その他</option>
+                <option value="">未設定</option>
+              </select>
+            </div>
             <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-4">
-              {players.map(p => (
+              {players
+                .filter(p => {
+                  if (rosterGenderFilter === 'all') return true;
+                  return p.gender === rosterGenderFilter;
+                })
+                .map(p => (
                 <div key={p.id} className="flex flex-col sm:flex-row items-center justify-between border-b py-4">
                   <span className="text-lg text-gray-900 font-medium mb-3 sm:mb-0">{p.displayName}</span>
                   <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
