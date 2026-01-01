@@ -207,9 +207,10 @@ export default function AnalyticsPage() {
   }, [executeWithRetry]);
 
   useEffect(() => {
-    if (!db || !teamInfo?.id) return;
+    if (!db || !teamInfo?.id || firebaseLoading) return;
     fetchAllData();
-  }, [db, teamInfo?.id, fetchAllData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, teamInfo?.id, selectedSeasonId]);
 
   // 選手別パフォーマンス推移データ
   const playerPerformanceData = useMemo(() => {

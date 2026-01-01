@@ -27,7 +27,10 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // このuseEffectはクライアントサイドでのみ実行される
+    let isMounted = true;
+    
     if (!app || !auth) {
+      logger.warn('Firebase app or auth is null', { app: !!app, auth: !!auth });
       setLoading(false);
       setDb(null);
       setUser(null);
@@ -83,17 +86,21 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
       }
     }
     
-    setDb(firestoreDb); // 初期化済みのdbインスタンスをStateにセット
+    // dbが初期化されたら、loadingをfalseにする（認証状態の取得を待たない）
+    if (isMounted) {
+      setDb(firestoreDb);
+      setLoading(false);
+    }
 
     // 認証状態の変更を監視（即座に現在の状態を取得）
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+      if (isMounted) {
+        setUser(user);
+      }
     });
-
-    // dbが初期化されたら、loadingをfalseにする（認証状態の取得を待たない）
-    setLoading(false);
     
     return () => {
+      isMounted = false;
       unsubscribe();
       syncUnsubscribe();
       if (typeof window !== 'undefined') {
