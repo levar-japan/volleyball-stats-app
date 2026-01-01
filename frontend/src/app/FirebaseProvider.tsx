@@ -28,7 +28,6 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // このuseEffectはクライアントサイドでのみ実行される
     if (!app || !auth) {
-      // Firebaseが初期化されていない場合は、ローディングを終了してエラーを表示
       setLoading(false);
       return;
     }

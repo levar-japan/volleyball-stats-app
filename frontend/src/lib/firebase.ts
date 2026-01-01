@@ -2,8 +2,6 @@ import { initializeApp, getApp, getApps, FirebaseApp } from "firebase/app";
 import { getAuth, connectAuthEmulator, Auth } from "firebase/auth";
 import { logger } from "./logger";
 
-// getFirestore と関連するインポートを削除
-
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -13,23 +11,11 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// 環境変数のバリデーション
-const requiredEnvVars = [
-  'NEXT_PUBLIC_FIREBASE_API_KEY',
-  'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
-  'NEXT_PUBLIC_FIREBASE_PROJECT_ID',
-  'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET',
-  'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID',
-  'NEXT_PUBLIC_FIREBASE_APP_ID',
-];
-
-const missingVars = requiredEnvVars.filter(
-  (varName) => !process.env[varName] || process.env[varName]?.includes('your-')
-);
-
-const hasValidConfig = missingVars.length === 0 && 
+const hasValidConfig = 
   firebaseConfig.apiKey && 
-  firebaseConfig.projectId;
+  firebaseConfig.projectId &&
+  !firebaseConfig.apiKey.includes('your-') &&
+  !firebaseConfig.projectId.includes('your-');
 
 // 環境変数が設定されている場合のみFirebaseを初期化
 let app: FirebaseApp | null = null;
@@ -45,9 +31,6 @@ if (hasValidConfig) {
     }
   }
 }
-// 環境変数が設定されていない場合は、エラーメッセージを表示せずに静かに失敗
-
-// db の初期化とオフライン設定をここから削除
 
 // エミュレーター接続は、USE_FIREBASE_EMULATOR環境変数が設定されている場合のみ
 if (
@@ -63,4 +46,4 @@ if (
   }
 }
 
-export { app, auth }; // db をエクスポートから削除
+export { app, auth };
