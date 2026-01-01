@@ -88,16 +88,12 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     // 認証状態の変更を監視（即座に現在の状態を取得）
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
-      setLoading(false);
     });
 
-    // タイムアウト: 5秒以内に認証状態が取得できない場合は、loadingをfalseにする
-    const timeoutId = setTimeout(() => {
-      setLoading(false);
-    }, 5000);
+    // dbが初期化されたら、loadingをfalseにする（認証状態の取得を待たない）
+    setLoading(false);
     
     return () => {
-      clearTimeout(timeoutId);
       unsubscribe();
       syncUnsubscribe();
       if (typeof window !== 'undefined') {
