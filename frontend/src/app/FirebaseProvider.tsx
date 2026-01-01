@@ -29,6 +29,7 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     // このuseEffectはクライアントサイドでのみ実行される
     if (!app || !auth) {
       setLoading(false);
+      setDb(null);
       return;
     }
 
@@ -114,10 +115,21 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, pathname, router]);
 
-  if (loading || !db) { // dbが初期化されるまでローディング
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-100">
         <p>アプリケーションを初期化中...</p>
+      </div>
+    );
+  }
+
+  if (!db || !auth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-100">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">Firebaseが初期化されていません</p>
+          <p className="text-gray-600 text-sm">環境変数が正しく設定されているか確認してください</p>
+        </div>
       </div>
     );
   }
