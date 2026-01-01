@@ -14,21 +14,39 @@ const firebaseConfig = {
 };
 
 // 環境変数のバリデーション
-if (typeof window !== 'undefined') {
-  const requiredEnvVars = [
-    'NEXT_PUBLIC_FIREBASE_API_KEY',
-    'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
-    'NEXT_PUBLIC_FIREBASE_PROJECT_ID',
-    'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET',
-    'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID',
-    'NEXT_PUBLIC_FIREBASE_APP_ID',
-  ];
+const requiredEnvVars = [
+  'NEXT_PUBLIC_FIREBASE_API_KEY',
+  'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
+  'NEXT_PUBLIC_FIREBASE_PROJECT_ID',
+  'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET',
+  'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID',
+  'NEXT_PUBLIC_FIREBASE_APP_ID',
+];
 
-  const missingVars = requiredEnvVars.filter(
-    (varName) => !process.env[varName] || process.env[varName]?.includes('your-')
-  );
+const missingVars = requiredEnvVars.filter(
+  (varName) => !process.env[varName] || process.env[varName]?.includes('your-')
+);
 
-  if (missingVars.length > 0) {
+const hasValidConfig = missingVars.length === 0 && 
+  firebaseConfig.apiKey && 
+  firebaseConfig.projectId;
+
+// 環境変数が設定されている場合のみFirebaseを初期化
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+
+if (hasValidConfig) {
+  try {
+    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    auth = getAuth(app);
+  } catch (error) {
+    if (typeof window !== 'undefined') {
+      logger.error('Firebase初期化エラー:', error);
+    }
+  }
+} else {
+  // 環境変数が設定されていない場合のエラーメッセージ
+  if (typeof window !== 'undefined') {
     // 本番環境の判定: NODE_ENVがproduction、またはlocalhost以外のホスト名
     const isProduction = process.env.NODE_ENV === 'production' || 
                          (typeof window !== 'undefined' && 
@@ -56,13 +74,11 @@ if (typeof window !== 'undefined') {
   }
 }
 
-const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-const auth: Auth = getAuth(app);
-
 // db の初期化とオフライン設定をここから削除
 
 // エミュレーター接続は、USE_FIREBASE_EMULATOR環境変数が設定されている場合のみ
 if (
+  auth &&
   typeof window !== 'undefined' && 
   process.env.NODE_ENV === 'development' &&
   process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === 'true'

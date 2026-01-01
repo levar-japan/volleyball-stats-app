@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { logger } from '@/lib/logger';
 
 interface FirebaseContextType {
-  auth: Auth;
+  auth: Auth | null;
   db: Firestore | null; // dbがnullになる可能性を許容
   user: User | null;
   loading: boolean;
@@ -27,6 +27,12 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // このuseEffectはクライアントサイドでのみ実行される
+    if (!app || !auth) {
+      logger.error('Firebaseが初期化されていません。環境変数を確認してください。');
+      setLoading(false);
+      return;
+    }
+
     const firestoreDb = getFirestore(app);
 
     enableIndexedDbPersistence(firestoreDb)

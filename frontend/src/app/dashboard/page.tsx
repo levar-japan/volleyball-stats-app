@@ -267,7 +267,9 @@ export default function DashboardPage() {
   };
   const handleLogout = () => {
     localStorage.removeItem('currentTeam');
-    auth.signOut();
+    if (auth) {
+      auth.signOut();
+    }
     router.push('/');
   };
 

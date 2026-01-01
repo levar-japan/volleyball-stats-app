@@ -53,10 +53,10 @@ export default function Home() {
       localStorage.setItem('currentTeam', JSON.stringify({ id: teamId, name: teamData.name }));
 
       // ユーザーがまだ認証されていなければ匿名認証を行う
-      if (!user) {
+      if (!user && auth) {
         await signInAnonymously(auth);
         // 認証後、onAuthStateChangedでリダイレクトされるためここでは待機
-      } else {
+      } else if (user) {
         // 既に（別のチームなどで）認証済みなら、そのままダッシュボードへ
         router.push('/dashboard');
       }
