@@ -59,7 +59,7 @@ interface Season {
   endDate: Timestamp;
 }
 
-type ViewMode = 'player' | 'team' | 'sets' | 'weakness' | 'overview';
+type ViewMode = 'overall' | 'player' | 'match';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
@@ -75,7 +75,8 @@ export default function AnalyticsPage() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState<string>('all');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<ViewMode>('overview');
+  const [selectedMatchId, setSelectedMatchId] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('overall');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -432,8 +433,218 @@ export default function AnalyticsPage() {
       },
       totalErrors,
       totalPoints: attackPoint + servePoint + blockPoint,
+      totalMatches: matches.length,
+      totalSets: sets.length,
+      wonSets: sets.filter(s => s.ourScore > s.opponentScore).length,
+      lostSets: sets.filter(s => s.ourScore < s.opponentScore).length,
+      setWinRate: sets.length > 0 ? (sets.filter(s => s.ourScore > s.opponentScore).length / sets.length) * 100 : 0,
+      avgPointsPerMatch: matches.length > 0 ? (attackPoint + servePoint + blockPoint) / matches.length : 0,
+      avgErrorsPerMatch: matches.length > 0 ? totalErrors / matches.length : 0,
     };
-  }, [events]);
+  }, [events, matches, sets]);
+
+  // 選手別統計
+  const playerStats = useMemo(() => {
+    const statsMap = new Map<string, {
+      playerId: string;
+      playerName: string;
+      matches: number;
+      totalPoints: number;
+      totalErrors: number;
+      attack: { total: number; point: number; miss: number; successRate: number };
+      serve: { total: number; point: number; miss: number; successRate: number };
+      block: { total: number; point: number; miss: number; successRate: number };
+      reception: { total: number; a: number; b: number; c: number; miss: number; successRate: number };
+      dig: { total: number; success: number; miss: number; successRate: number };
+    }>();
+
+    players.forEach(player => {
+      const playerEvents = events.filter(e => e.playerId === player.id);
+      const playerMatches = new Set(playerEvents.map(e => e.matchId).filter(Boolean));
+      
+      let attackTotal = 0, attackPoint = 0, attackMiss = 0;
+      let serveTotal = 0, servePoint = 0, serveMiss = 0;
+      let blockTotal = 0, blockPoint = 0, blockMiss = 0;
+      let receptionTotal = 0, receptionA = 0, receptionB = 0, receptionC = 0, receptionMiss = 0;
+      let digTotal = 0, digSuccess = 0, digMiss = 0;
+      let totalErrors = 0;
+
+      playerEvents.forEach(event => {
+        if (event.action === 'ATTACK') {
+          attackTotal++;
+          if (event.result === '得点') attackPoint++;
+          if (event.result === '失点') { attackMiss++; totalErrors++; }
+        }
+        if (event.action === 'SERVE') {
+          serveTotal++;
+          if (event.result === '得点') servePoint++;
+          if (event.result === '失点') { serveMiss++; totalErrors++; }
+        }
+        if (event.action === 'BLOCK') {
+          blockTotal++;
+          if (event.result === '得点') blockPoint++;
+          if (event.result === '失点') { blockMiss++; totalErrors++; }
+        }
+        if (event.action === 'RECEPTION') {
+          receptionTotal++;
+          if (event.result === 'Aパス') receptionA++;
+          if (event.result === 'Bパス') receptionB++;
+          if (event.result === 'Cパス') receptionC++;
+          if (event.result === '失点') { receptionMiss++; totalErrors++; }
+        }
+        if (event.action === 'DIG') {
+          digTotal++;
+          if (event.result === '成功') digSuccess++;
+          if (event.result === '失敗') { digMiss++; totalErrors++; }
+        }
+        if (event.action === 'OUR_ERROR') totalErrors++;
+      });
+
+      statsMap.set(player.id, {
+        playerId: player.id,
+        playerName: player.displayName,
+        matches: playerMatches.size,
+        totalPoints: attackPoint + servePoint + blockPoint,
+        totalErrors,
+        attack: {
+          total: attackTotal,
+          point: attackPoint,
+          miss: attackMiss,
+          successRate: attackTotal > 0 ? (attackPoint / attackTotal) * 100 : 0,
+        },
+        serve: {
+          total: serveTotal,
+          point: servePoint,
+          miss: serveMiss,
+          successRate: serveTotal > 0 ? (servePoint / serveTotal) * 100 : 0,
+        },
+        block: {
+          total: blockTotal,
+          point: blockPoint,
+          miss: blockMiss,
+          successRate: blockTotal > 0 ? (blockPoint / blockTotal) * 100 : 0,
+        },
+        reception: {
+          total: receptionTotal,
+          a: receptionA,
+          b: receptionB,
+          c: receptionC,
+          miss: receptionMiss,
+          successRate: receptionTotal > 0 ? ((receptionA + receptionB) / receptionTotal) * 100 : 0,
+        },
+        dig: {
+          total: digTotal,
+          success: digSuccess,
+          miss: digMiss,
+          successRate: digTotal > 0 ? (digSuccess / digTotal) * 100 : 0,
+        },
+      });
+    });
+
+    return Array.from(statsMap.values()).sort((a, b) => b.totalPoints - a.totalPoints);
+  }, [events, players]);
+
+  // 試合別統計
+  const matchStats = useMemo(() => {
+    return matches.map(match => {
+      const matchEvents = events.filter(e => e.matchId === match.id);
+      const matchSets = sets.filter(s => s.matchId === match.id);
+      
+      let attackTotal = 0, attackPoint = 0, attackMiss = 0;
+      let serveTotal = 0, servePoint = 0, serveMiss = 0;
+      let blockTotal = 0, blockPoint = 0, blockMiss = 0;
+      let receptionTotal = 0, receptionA = 0, receptionB = 0, receptionC = 0, receptionMiss = 0;
+      let digTotal = 0, digSuccess = 0, digMiss = 0;
+      let totalErrors = 0;
+
+      matchEvents.forEach(event => {
+        if (event.action === 'ATTACK') {
+          attackTotal++;
+          if (event.result === '得点') attackPoint++;
+          if (event.result === '失点') { attackMiss++; totalErrors++; }
+        }
+        if (event.action === 'SERVE') {
+          serveTotal++;
+          if (event.result === '得点') servePoint++;
+          if (event.result === '失点') { serveMiss++; totalErrors++; }
+        }
+        if (event.action === 'BLOCK') {
+          blockTotal++;
+          if (event.result === '得点') blockPoint++;
+          if (event.result === '失点') { blockMiss++; totalErrors++; }
+        }
+        if (event.action === 'RECEPTION') {
+          receptionTotal++;
+          if (event.result === 'Aパス') receptionA++;
+          if (event.result === 'Bパス') receptionB++;
+          if (event.result === 'Cパス') receptionC++;
+          if (event.result === '失点') { receptionMiss++; totalErrors++; }
+        }
+        if (event.action === 'DIG') {
+          digTotal++;
+          if (event.result === '成功') digSuccess++;
+          if (event.result === '失敗') { digMiss++; totalErrors++; }
+        }
+        if (event.action === 'OUR_ERROR') totalErrors++;
+      });
+
+      const wonSets = matchSets.filter(s => s.ourScore > s.opponentScore).length;
+      const lostSets = matchSets.filter(s => s.ourScore < s.opponentScore).length;
+      const totalOurScore = matchSets.reduce((sum, s) => sum + s.ourScore, 0);
+      const totalOpponentScore = matchSets.reduce((sum, s) => sum + s.opponentScore, 0);
+
+      return {
+        matchId: match.id,
+        opponent: match.opponent,
+        date: match.matchDate.toDate().toLocaleDateString(),
+        status: match.status,
+        sets: matchSets.length,
+        wonSets,
+        lostSets,
+        totalOurScore,
+        totalOpponentScore,
+        totalPoints: attackPoint + servePoint + blockPoint,
+        totalErrors,
+        attack: {
+          total: attackTotal,
+          point: attackPoint,
+          miss: attackMiss,
+          successRate: attackTotal > 0 ? (attackPoint / attackTotal) * 100 : 0,
+        },
+        serve: {
+          total: serveTotal,
+          point: servePoint,
+          miss: serveMiss,
+          successRate: serveTotal > 0 ? (servePoint / serveTotal) * 100 : 0,
+        },
+        block: {
+          total: blockTotal,
+          point: blockPoint,
+          miss: blockMiss,
+          successRate: blockTotal > 0 ? (blockPoint / blockTotal) * 100 : 0,
+        },
+        reception: {
+          total: receptionTotal,
+          a: receptionA,
+          b: receptionB,
+          c: receptionC,
+          miss: receptionMiss,
+          successRate: receptionTotal > 0 ? ((receptionA + receptionB) / receptionTotal) * 100 : 0,
+        },
+        dig: {
+          total: digTotal,
+          success: digSuccess,
+          miss: digMiss,
+          successRate: digTotal > 0 ? (digSuccess / digTotal) * 100 : 0,
+        },
+        setScores: matchSets.map(s => ({
+          setNumber: s.setNumber,
+          ourScore: s.ourScore,
+          opponentScore: s.opponentScore,
+        })),
+      };
+    });
+  }, [events, matches, sets]);
 
   if (loading) {
     return (
@@ -488,143 +699,102 @@ export default function AnalyticsPage() {
         <div className="bg-white rounded-xl shadow-md border border-gray-200 p-2 mb-6">
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => setViewMode('overview')}
-              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${viewMode === 'overview' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              onClick={() => setViewMode('overall')}
+              className={`px-6 py-3 rounded-lg font-semibold text-base transition-all ${viewMode === 'overall' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
-              概要
+              全体統計
             </button>
             <button
               onClick={() => setViewMode('player')}
-              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${viewMode === 'player' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              className={`px-6 py-3 rounded-lg font-semibold text-base transition-all ${viewMode === 'player' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
-              選手別推移
+              選手別統計
             </button>
             <button
-              onClick={() => setViewMode('sets')}
-              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${viewMode === 'sets' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              onClick={() => setViewMode('match')}
+              className={`px-6 py-3 rounded-lg font-semibold text-base transition-all ${viewMode === 'match' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
-              セットスコア
-            </button>
-            <button
-              onClick={() => setViewMode('team')}
-              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${viewMode === 'team' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-            >
-              チーム推移
-            </button>
-            <button
-              onClick={() => setViewMode('weakness')}
-              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${viewMode === 'weakness' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-            >
-              弱点分析
+              試合別統計
             </button>
           </div>
         </div>
 
-        {/* 概要ビュー */}
-        {viewMode === 'overview' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900">総得点</h3>
-              <p className="text-4xl font-bold bg-gradient-to-br from-indigo-600 to-blue-600 bg-clip-text text-transparent">{teamOverallStats.totalPoints}</p>
+        {/* 全体統計ビュー */}
+        {viewMode === 'overall' && (
+          <div className="space-y-6">
+            {/* 基本統計 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <h3 className="text-lg font-semibold mb-4 text-gray-900">試合数</h3>
+                <p className="text-4xl font-bold text-gray-700">{teamOverallStats.totalMatches}</p>
+              </div>
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <h3 className="text-lg font-semibold mb-4 text-gray-900">総得点</h3>
+                <p className="text-4xl font-bold bg-gradient-to-br from-indigo-600 to-blue-600 bg-clip-text text-transparent">{teamOverallStats.totalPoints}</p>
+              </div>
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <h3 className="text-lg font-semibold mb-4 text-gray-900">総失点</h3>
+                <p className="text-4xl font-bold bg-gradient-to-br from-red-500 to-red-600 bg-clip-text text-transparent">{teamOverallStats.totalErrors}</p>
+              </div>
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <h3 className="text-lg font-semibold mb-4 text-gray-900">セット勝率</h3>
+                <p className="text-4xl font-bold bg-gradient-to-br from-green-500 to-emerald-600 bg-clip-text text-transparent">{teamOverallStats.setWinRate.toFixed(1)}%</p>
+                <p className="text-sm text-gray-600 mt-2">{teamOverallStats.wonSets}勝{teamOverallStats.lostSets}敗</p>
+              </div>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900">総失点</h3>
-              <p className="text-4xl font-bold bg-gradient-to-br from-red-500 to-red-600 bg-clip-text text-transparent">{teamOverallStats.totalErrors}</p>
-            </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900">試合数</h3>
-              <p className="text-4xl font-bold text-gray-700">{matches.length}</p>
-            </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900">アタック成功率</h3>
-              <p className="text-4xl font-bold bg-gradient-to-br from-green-500 to-emerald-600 bg-clip-text text-transparent">{teamOverallStats.attack.successRate.toFixed(1)}%</p>
-              <p className="text-sm text-gray-600 mt-2">{teamOverallStats.attack.point}/{teamOverallStats.attack.total}</p>
-            </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900">サーブ成功率</h3>
-              <p className="text-4xl font-bold bg-gradient-to-br from-green-500 to-emerald-600 bg-clip-text text-transparent">{teamOverallStats.serve.successRate.toFixed(1)}%</p>
-              <p className="text-sm text-gray-600 mt-2">{teamOverallStats.serve.point}/{teamOverallStats.serve.total}</p>
-            </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900">レセプション成功率</h3>
-              <p className="text-4xl font-bold bg-gradient-to-br from-green-500 to-emerald-600 bg-clip-text text-transparent">{teamOverallStats.reception.successRate.toFixed(1)}%</p>
-              <p className="text-sm text-gray-600 mt-2">A+B: {teamOverallStats.reception.a + teamOverallStats.reception.b}/{teamOverallStats.reception.total}</p>
-            </div>
-          </div>
-        )}
 
-        {/* 選手別パフォーマンス推移 */}
-        {viewMode === 'player' && (
-          <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 space-y-6">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">選手選択</label>
-              <select
-                value={selectedPlayerId}
-                onChange={(e) => setSelectedPlayerId(e.target.value)}
-                className="px-4 py-2 bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              >
-                <option value="all">全選手</option>
-                {players.map(player => (
-                  <option key={player.id} value={player.id}>{player.displayName}</option>
-                ))}
-              </select>
+            {/* スキル別統計 */}
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+              <h3 className="text-xl font-semibold mb-6 text-gray-900">スキル別統計</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">アタック</h4>
+                  <p className="text-3xl font-bold text-indigo-600">{teamOverallStats.attack.successRate.toFixed(1)}%</p>
+                  <p className="text-sm text-gray-600 mt-1">{teamOverallStats.attack.point}得点 / {teamOverallStats.attack.total}回</p>
+                  <p className="text-xs text-red-600 mt-1">{teamOverallStats.attack.miss}失点</p>
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">サーブ</h4>
+                  <p className="text-3xl font-bold text-green-600">{teamOverallStats.serve.successRate.toFixed(1)}%</p>
+                  <p className="text-sm text-gray-600 mt-1">{teamOverallStats.serve.point}得点 / {teamOverallStats.serve.total}回</p>
+                  <p className="text-xs text-red-600 mt-1">{teamOverallStats.serve.miss}失点</p>
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">ブロック</h4>
+                  <p className="text-3xl font-bold text-amber-600">{teamOverallStats.block.successRate.toFixed(1)}%</p>
+                  <p className="text-sm text-gray-600 mt-1">{teamOverallStats.block.point}得点 / {teamOverallStats.block.total}回</p>
+                  <p className="text-xs text-red-600 mt-1">{teamOverallStats.block.miss}失点</p>
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">レセプション</h4>
+                  <p className="text-3xl font-bold text-purple-600">{teamOverallStats.reception.successRate.toFixed(1)}%</p>
+                  <p className="text-sm text-gray-600 mt-1">A+B: {teamOverallStats.reception.a + teamOverallStats.reception.b} / {teamOverallStats.reception.total}回</p>
+                  <p className="text-xs text-red-600 mt-1">{teamOverallStats.reception.miss}失点</p>
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">ディグ</h4>
+                  <p className="text-3xl font-bold text-blue-600">{teamOverallStats.dig.successRate.toFixed(1)}%</p>
+                  <p className="text-sm text-gray-600 mt-1">{teamOverallStats.dig.success}成功 / {teamOverallStats.dig.total}回</p>
+                  <p className="text-xs text-red-600 mt-1">{teamOverallStats.dig.miss}失敗</p>
+                </div>
+              </div>
             </div>
-            <div>
-              <h3 className="text-xl font-semibold mb-4">選手別パフォーマンス推移</h3>
-              <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={playerPerformanceData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="match" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="attackPoint" stroke="#10b981" name="アタック得点" />
-                  <Line type="monotone" dataKey="servePoint" stroke="#3b82f6" name="サーブ得点" />
-                  <Line type="monotone" dataKey="blockPoint" stroke="#f59e0b" name="ブロック得点" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold mb-4">失点推移</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={playerPerformanceData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="match" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="attackMiss" stroke="#ef4444" name="アタック失点" />
-                  <Line type="monotone" dataKey="serveMiss" stroke="#f97316" name="サーブ失点" />
-                  <Line type="monotone" dataKey="receptionMiss" stroke="#dc2626" name="レセプション失点" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        )}
 
-        {/* セットごとのスコア推移 */}
-        {viewMode === 'sets' && (
-          <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-            <h3 className="text-xl font-semibold mb-4">セットごとのスコア推移</h3>
-            <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={setScoreData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="matchSet" angle={-45} textAnchor="end" height={100} />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="ourScore" fill="#3b82f6" name="自チーム" />
-                <Bar dataKey="opponentScore" fill="#ef4444" name="相手チーム" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
+            {/* 平均値 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <h3 className="text-lg font-semibold mb-4 text-gray-900">試合平均得点</h3>
+                <p className="text-4xl font-bold bg-gradient-to-br from-indigo-600 to-blue-600 bg-clip-text text-transparent">{teamOverallStats.avgPointsPerMatch.toFixed(1)}</p>
+              </div>
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <h3 className="text-lg font-semibold mb-4 text-gray-900">試合平均失点</h3>
+                <p className="text-4xl font-bold bg-gradient-to-br from-red-500 to-red-600 bg-clip-text text-transparent">{teamOverallStats.avgErrorsPerMatch.toFixed(1)}</p>
+              </div>
+            </div>
 
-        {/* チーム全体パフォーマンス推移 */}
-        {viewMode === 'team' && (
-          <div className="bg-white p-6 rounded-lg shadow-md space-y-6">
-            <div>
-              <h3 className="text-xl font-semibold mb-4">チーム全体パフォーマンス推移</h3>
+            {/* チーム推移グラフ */}
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+              <h3 className="text-xl font-semibold mb-4">チームパフォーマンス推移</h3>
               <ResponsiveContainer width="100%" height={400}>
                 <LineChart data={teamPerformanceData}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -637,7 +807,9 @@ export default function AnalyticsPage() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <div>
+
+            {/* 成功率推移グラフ */}
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
               <h3 className="text-xl font-semibold mb-4">成功率推移</h3>
               <ResponsiveContainer width="100%" height={400}>
                 <LineChart data={teamPerformanceData}>
@@ -652,13 +824,9 @@ export default function AnalyticsPage() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
-          </div>
-        )}
 
-        {/* 弱点分析 */}
-        {viewMode === 'weakness' && (
-          <div className="bg-white p-6 rounded-lg shadow-md space-y-6">
-            <div>
+            {/* 弱点分析 */}
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
               <h3 className="text-xl font-semibold mb-4">弱点分析（失点が多い順）</h3>
               <ResponsiveContainer width="100%" height={400}>
                 <BarChart data={weaknessData} layout="vertical">
@@ -670,30 +838,336 @@ export default function AnalyticsPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div>
-              <h3 className="text-xl font-semibold mb-4">失点分布</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={weaknessData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={(entry: { name?: string; percent?: number }) => 
-                      `${entry.name || ''}: ${((entry.percent || 0) * 100).toFixed(0)}%`
-                    }
-                    outerRadius={100}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {weaknessData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* 選手別統計ビュー */}
+        {viewMode === 'player' && (
+          <div className="space-y-6">
+            {/* 選手選択 */}
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">選手選択（個別統計表示）</label>
+              <select
+                value={selectedPlayerId}
+                onChange={(e) => setSelectedPlayerId(e.target.value)}
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent w-full md:w-auto"
+              >
+                <option value="all">全選手（一覧表示）</option>
+                {players.map(player => (
+                  <option key={player.id} value={player.id}>{player.displayName}</option>
+                ))}
+              </select>
             </div>
+
+            {/* 選手一覧表示 */}
+            {selectedPlayerId === 'all' && (
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <h3 className="text-xl font-semibold mb-6 text-gray-900">選手別統計一覧（総得点順）</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">選手名</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">出場試合</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">総得点</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">総失点</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">アタック</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">サーブ</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ブロック</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">レセプション</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {playerStats.map((stat) => (
+                        <tr key={stat.playerId} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">{stat.playerName}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-gray-700">{stat.matches}</td>
+                          <td className="px-4 py-3 whitespace-nowrap font-bold text-indigo-600">{stat.totalPoints}</td>
+                          <td className="px-4 py-3 whitespace-nowrap font-bold text-red-600">{stat.totalErrors}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                            {stat.attack.successRate.toFixed(1)}% ({stat.attack.point}/{stat.attack.total})
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                            {stat.serve.successRate.toFixed(1)}% ({stat.serve.point}/{stat.serve.total})
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                            {stat.block.successRate.toFixed(1)}% ({stat.block.point}/{stat.block.total})
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                            {stat.reception.successRate.toFixed(1)}% (A+B: {stat.reception.a + stat.reception.b}/{stat.reception.total})
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* 個別選手統計 */}
+            {selectedPlayerId !== 'all' && (() => {
+              const playerStat = playerStats.find(p => p.playerId === selectedPlayerId);
+              if (!playerStat) return null;
+              
+              return (
+                <div className="space-y-6">
+                  {/* 選手基本統計 */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">出場試合数</h3>
+                      <p className="text-3xl font-bold text-gray-700">{playerStat.matches}</p>
+                    </div>
+                    <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">総得点</h3>
+                      <p className="text-3xl font-bold text-indigo-600">{playerStat.totalPoints}</p>
+                    </div>
+                    <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">総失点</h3>
+                      <p className="text-3xl font-bold text-red-600">{playerStat.totalErrors}</p>
+                    </div>
+                    <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">得失点差</h3>
+                      <p className={`text-3xl font-bold ${playerStat.totalPoints - playerStat.totalErrors >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {playerStat.totalPoints - playerStat.totalErrors > 0 ? '+' : ''}{playerStat.totalPoints - playerStat.totalErrors}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* スキル別統計 */}
+                  <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                    <h3 className="text-xl font-semibold mb-6 text-gray-900">スキル別統計</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">アタック</h4>
+                        <p className="text-2xl font-bold text-indigo-600">{playerStat.attack.successRate.toFixed(1)}%</p>
+                        <p className="text-sm text-gray-600 mt-1">{playerStat.attack.point}得点 / {playerStat.attack.total}回</p>
+                        <p className="text-xs text-red-600 mt-1">{playerStat.attack.miss}失点</p>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">サーブ</h4>
+                        <p className="text-2xl font-bold text-green-600">{playerStat.serve.successRate.toFixed(1)}%</p>
+                        <p className="text-sm text-gray-600 mt-1">{playerStat.serve.point}得点 / {playerStat.serve.total}回</p>
+                        <p className="text-xs text-red-600 mt-1">{playerStat.serve.miss}失点</p>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">ブロック</h4>
+                        <p className="text-2xl font-bold text-amber-600">{playerStat.block.successRate.toFixed(1)}%</p>
+                        <p className="text-sm text-gray-600 mt-1">{playerStat.block.point}得点 / {playerStat.block.total}回</p>
+                        <p className="text-xs text-red-600 mt-1">{playerStat.block.miss}失点</p>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">レセプション</h4>
+                        <p className="text-2xl font-bold text-purple-600">{playerStat.reception.successRate.toFixed(1)}%</p>
+                        <p className="text-sm text-gray-600 mt-1">A+B: {playerStat.reception.a + playerStat.reception.b} / {playerStat.reception.total}回</p>
+                        <p className="text-xs text-red-600 mt-1">{playerStat.reception.miss}失点</p>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">ディグ</h4>
+                        <p className="text-2xl font-bold text-blue-600">{playerStat.dig.successRate.toFixed(1)}%</p>
+                        <p className="text-sm text-gray-600 mt-1">{playerStat.dig.success}成功 / {playerStat.dig.total}回</p>
+                        <p className="text-xs text-red-600 mt-1">{playerStat.dig.miss}失敗</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 選手パフォーマンス推移 */}
+                  <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                    <h3 className="text-xl font-semibold mb-4">パフォーマンス推移</h3>
+                    <ResponsiveContainer width="100%" height={400}>
+                      <LineChart data={playerPerformanceData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="match" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="attackPoint" stroke="#10b981" name="アタック得点" />
+                        <Line type="monotone" dataKey="servePoint" stroke="#3b82f6" name="サーブ得点" />
+                        <Line type="monotone" dataKey="blockPoint" stroke="#f59e0b" name="ブロック得点" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                    <h3 className="text-xl font-semibold mb-4">失点推移</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={playerPerformanceData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="match" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="attackMiss" stroke="#ef4444" name="アタック失点" />
+                        <Line type="monotone" dataKey="serveMiss" stroke="#f97316" name="サーブ失点" />
+                        <Line type="monotone" dataKey="receptionMiss" stroke="#dc2626" name="レセプション失点" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* 試合別統計ビュー */}
+        {viewMode === 'match' && (
+          <div className="space-y-6">
+            {/* 試合選択 */}
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">試合選択（個別統計表示）</label>
+              <select
+                value={selectedMatchId}
+                onChange={(e) => setSelectedMatchId(e.target.value)}
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent w-full md:w-auto"
+              >
+                <option value="all">全試合（一覧表示）</option>
+                {matches.map(match => (
+                  <option key={match.id} value={match.id}>
+                    {match.opponent} - {match.matchDate.toDate().toLocaleDateString()}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 試合一覧表示 */}
+            {selectedMatchId === 'all' && (
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <h3 className="text-xl font-semibold mb-6 text-gray-900">試合別統計一覧</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">対戦相手</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">日付</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">セット</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">総得点</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">総失点</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">アタック</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">サーブ</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">レセプション</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {matchStats.map((stat) => (
+                        <tr key={stat.matchId} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">{stat.opponent}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-gray-700">{stat.date}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-gray-700">
+                            {stat.wonSets}勝{stat.lostSets}敗 ({stat.totalOurScore}-{stat.totalOpponentScore})
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap font-bold text-indigo-600">{stat.totalPoints}</td>
+                          <td className="px-4 py-3 whitespace-nowrap font-bold text-red-600">{stat.totalErrors}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                            {stat.attack.successRate.toFixed(1)}% ({stat.attack.point}/{stat.attack.total})
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                            {stat.serve.successRate.toFixed(1)}% ({stat.serve.point}/{stat.serve.total})
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                            {stat.reception.successRate.toFixed(1)}% (A+B: {stat.reception.a + stat.reception.b}/{stat.reception.total})
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* 個別試合統計 */}
+            {selectedMatchId !== 'all' && (() => {
+              const matchStat = matchStats.find(m => m.matchId === selectedMatchId);
+              if (!matchStat) return null;
+              
+              return (
+                <div className="space-y-6">
+                  {/* 試合基本情報 */}
+                  <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-2">対戦相手</h3>
+                        <p className="text-2xl font-bold text-gray-900">{matchStat.opponent}</p>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-2">試合日</h3>
+                        <p className="text-xl font-semibold text-gray-700">{matchStat.date}</p>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-2">セット結果</h3>
+                        <p className="text-2xl font-bold text-gray-900">{matchStat.wonSets}勝{matchStat.lostSets}敗</p>
+                        <p className="text-sm text-gray-600 mt-1">総スコア: {matchStat.totalOurScore}-{matchStat.totalOpponentScore}</p>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-2">試合結果</h3>
+                        <p className={`text-xl font-bold ${matchStat.wonSets > matchStat.lostSets ? 'text-green-600' : matchStat.wonSets < matchStat.lostSets ? 'text-red-600' : 'text-gray-600'}`}>
+                          {matchStat.wonSets > matchStat.lostSets ? '勝利' : matchStat.wonSets < matchStat.lostSets ? '敗北' : '引き分け'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* セットスコア */}
+                  <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                    <h3 className="text-xl font-semibold mb-4">セットスコア</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                      {matchStat.setScores.map((set, index) => (
+                        <div key={index} className={`p-4 rounded-lg border-2 ${set.ourScore > set.opponentScore ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'}`}>
+                          <p className="text-sm font-semibold text-gray-700 mb-2">Set {set.setNumber}</p>
+                          <p className="text-2xl font-bold text-gray-900">{set.ourScore} - {set.opponentScore}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* スキル別統計 */}
+                  <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                    <h3 className="text-xl font-semibold mb-6 text-gray-900">スキル別統計</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">アタック</h4>
+                        <p className="text-2xl font-bold text-indigo-600">{matchStat.attack.successRate.toFixed(1)}%</p>
+                        <p className="text-sm text-gray-600 mt-1">{matchStat.attack.point}得点 / {matchStat.attack.total}回</p>
+                        <p className="text-xs text-red-600 mt-1">{matchStat.attack.miss}失点</p>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">サーブ</h4>
+                        <p className="text-2xl font-bold text-green-600">{matchStat.serve.successRate.toFixed(1)}%</p>
+                        <p className="text-sm text-gray-600 mt-1">{matchStat.serve.point}得点 / {matchStat.serve.total}回</p>
+                        <p className="text-xs text-red-600 mt-1">{matchStat.serve.miss}失点</p>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">ブロック</h4>
+                        <p className="text-2xl font-bold text-amber-600">{matchStat.block.successRate.toFixed(1)}%</p>
+                        <p className="text-sm text-gray-600 mt-1">{matchStat.block.point}得点 / {matchStat.block.total}回</p>
+                        <p className="text-xs text-red-600 mt-1">{matchStat.block.miss}失点</p>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">レセプション</h4>
+                        <p className="text-2xl font-bold text-purple-600">{matchStat.reception.successRate.toFixed(1)}%</p>
+                        <p className="text-sm text-gray-600 mt-1">A+B: {matchStat.reception.a + matchStat.reception.b} / {matchStat.reception.total}回</p>
+                        <p className="text-xs text-red-600 mt-1">{matchStat.reception.miss}失点</p>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">ディグ</h4>
+                        <p className="text-2xl font-bold text-blue-600">{matchStat.dig.successRate.toFixed(1)}%</p>
+                        <p className="text-sm text-gray-600 mt-1">{matchStat.dig.success}成功 / {matchStat.dig.total}回</p>
+                        <p className="text-xs text-red-600 mt-1">{matchStat.dig.miss}失敗</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 得点・失点サマリー */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                      <h3 className="text-lg font-semibold mb-4 text-gray-900">総得点</h3>
+                      <p className="text-4xl font-bold bg-gradient-to-br from-indigo-600 to-blue-600 bg-clip-text text-transparent">{matchStat.totalPoints}</p>
+                    </div>
+                    <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                      <h3 className="text-lg font-semibold mb-4 text-gray-900">総失点</h3>
+                      <p className="text-4xl font-bold bg-gradient-to-br from-red-500 to-red-600 bg-clip-text text-transparent">{matchStat.totalErrors}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </main>
