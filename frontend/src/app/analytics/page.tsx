@@ -64,7 +64,7 @@ type ViewMode = 'player' | 'team' | 'sets' | 'weakness' | 'overview';
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 export default function AnalyticsPage() {
-  const { db } = useFirebase();
+  const { db, loading: firebaseLoading } = useFirebase();
   const { toast } = useGlobalContext();
   const router = useRouter();
   const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
@@ -87,6 +87,14 @@ export default function AnalyticsPage() {
       router.push('/dashboard');
     }
   }, [router]);
+
+  // Firebaseが初期化されていない場合の処理
+  useEffect(() => {
+    if (!firebaseLoading && !db) {
+      setLoading(false);
+      setError('Firebaseが初期化されていません。環境変数を確認してください。');
+    }
+  }, [firebaseLoading, db]);
 
   const fetchAllDataBase = useCallback(async () => {
     if (!db || !teamInfo?.id) return;

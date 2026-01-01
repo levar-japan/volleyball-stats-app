@@ -30,6 +30,7 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     if (!app || !auth) {
       setLoading(false);
       setDb(null);
+      setUser(null);
       return;
     }
 
@@ -84,12 +85,19 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     
     setDb(firestoreDb); // 初期化済みのdbインスタンスをStateにセット
 
+    // 認証状態の変更を監視（即座に現在の状態を取得）
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
       setLoading(false);
     });
+
+    // タイムアウト: 5秒以内に認証状態が取得できない場合は、loadingをfalseにする
+    const timeoutId = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
     
     return () => {
+      clearTimeout(timeoutId);
       unsubscribe();
       syncUnsubscribe();
       if (typeof window !== 'undefined') {
