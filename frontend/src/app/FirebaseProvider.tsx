@@ -28,7 +28,7 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // このuseEffectはクライアントサイドでのみ実行される
     if (!app || !auth) {
-      logger.error('Firebaseが初期化されていません。環境変数を確認してください。');
+      // Firebaseが初期化されていない場合は、ローディングを終了してエラーを表示
       setLoading(false);
       return;
     }

@@ -44,35 +44,8 @@ if (hasValidConfig) {
       logger.error('Firebase初期化エラー:', error);
     }
   }
-} else {
-  // 環境変数が設定されていない場合のエラーメッセージ
-  if (typeof window !== 'undefined') {
-    // 本番環境の判定: NODE_ENVがproduction、またはlocalhost以外のホスト名
-    const isProduction = process.env.NODE_ENV === 'production' || 
-                         (typeof window !== 'undefined' && 
-                          window.location.hostname !== 'localhost' && 
-                          window.location.hostname !== '127.0.0.1' &&
-                          !window.location.hostname.startsWith('192.168.') &&
-                          !window.location.hostname.startsWith('10.') &&
-                          !window.location.hostname.endsWith('.local'));
-    
-    if (isProduction) {
-      logger.error('❌ Firebase環境変数が設定されていません:', missingVars);
-      logger.error('📝 Vercelダッシュボードで環境変数を設定してください:');
-      logger.error('   1. Vercel → プロジェクト → Settings → Environment Variables');
-      logger.error('   2. 以下の環境変数を追加:');
-      missingVars.forEach(varName => {
-        logger.error(`      - ${varName}`);
-      });
-      logger.error('   3. 再デプロイを実行');
-      logger.error('🔗 Vercel: https://vercel.com/dashboard');
-    } else {
-      logger.error('❌ Firebase環境変数が設定されていません:', missingVars);
-      logger.error('📝 frontend/.env.local ファイルにFirebase設定を追加してください');
-      logger.error('🔗 Firebase Console: https://console.firebase.google.com/');
-    }
-  }
 }
+// 環境変数が設定されていない場合は、エラーメッセージを表示せずに静かに失敗
 
 // db の初期化とオフライン設定をここから削除
 
